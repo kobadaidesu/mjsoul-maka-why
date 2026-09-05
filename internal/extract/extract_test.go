@@ -43,7 +43,14 @@ func build(t *testing.T, reg *liqi.Registry, name string, fields map[string]any)
 		case bool:
 			m.Set(fd, protoreflect.ValueOfBool(v))
 		case int:
-			m.Set(fd, protoreflect.ValueOfUint32(uint32(v)))
+			switch fd.Kind() {
+			case protoreflect.Int32Kind:
+				m.Set(fd, protoreflect.ValueOfInt32(int32(v)))
+			case protoreflect.Int64Kind:
+				m.Set(fd, protoreflect.ValueOfInt64(int64(v)))
+			default:
+				m.Set(fd, protoreflect.ValueOfUint32(uint32(v)))
+			}
 		case []string:
 			list := m.Mutable(fd).List()
 			for _, s := range v {
@@ -59,11 +66,17 @@ func build(t *testing.T, reg *liqi.Registry, name string, fields map[string]any)
 			for _, n := range v {
 				list.Append(protoreflect.ValueOfUint32(n))
 			}
+		case []map[string]any:
+			list := m.Mutable(fd).List()
+			for _, child := range v {
+				sub := build(t, reg, "."+string(fd.Message().FullName()), child)
+				list.Append(protoreflect.ValueOfMessage(sub.Message))
+			}
 		default:
 			t.Fatalf("unsupported fixture value %T", v)
 		}
 	}
-	return decode.ActionRecord{Name: name, Status: "decoded", Message: m}
+	return decode.ActionRecord{Type: 1, Name: name, Status: "decoded", Message: m}
 }
 
 func newRoundAction(t *testing.T, reg *liqi.Registry, tiles [][]string) decode.ActionRecord {

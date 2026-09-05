@@ -226,6 +226,40 @@ func StringField(m protoreflect.Message, name string) (string, error) {
 	return m.Get(fd).String(), nil
 }
 
+func IntField(m protoreflect.Message, name string) (int64, error) {
+	fd, err := field(m, name)
+	if err != nil {
+		return 0, err
+	}
+	switch fd.Kind() {
+	case protoreflect.Int32Kind, protoreflect.Int64Kind, protoreflect.Sint32Kind, protoreflect.Sint64Kind, protoreflect.Sfixed32Kind, protoreflect.Sfixed64Kind:
+		if !fd.IsList() {
+			return m.Get(fd).Int(), nil
+		}
+	}
+	return 0, fmt.Errorf("field %s.%s is not singular signed integer", m.Descriptor().FullName(), name)
+}
+
+func MessagesField(m protoreflect.Message, name string) ([]protoreflect.Message, error) {
+	fd, err := field(m, name)
+	if err != nil {
+		return nil, err
+	}
+	if fd.Kind() != protoreflect.MessageKind || !fd.IsList() {
+		return nil, fmt.Errorf("field %s.%s is not repeated message", m.Descriptor().FullName(), name)
+	}
+	list := m.Get(fd).List()
+	out := make([]protoreflect.Message, list.Len())
+	for i := range out {
+		msg, ok := list.Get(i).Interface().(protoreflect.Message)
+		if !ok {
+			return nil, fmt.Errorf("field %s.%s element %d is not a message", m.Descriptor().FullName(), name, i)
+		}
+		out[i] = msg
+	}
+	return out, nil
+}
+
 func MessageField(m protoreflect.Message, name string) (protoreflect.Message, error) {
 	fd, err := field(m, name)
 	if err != nil {

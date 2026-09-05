@@ -88,7 +88,64 @@
         },
         "RecordHule": {
           "fields": {
+            "hules": { "rule": "repeated", "type": "HuleInfo", "id": 1 },
             "scores": { "rule": "repeated", "type": "int32", "id": 5 }
+          }
+        },
+        "HuleInfo": {
+          "fields": {
+            "seat": { "type": "uint32", "id": 4 },
+            "zimo": { "type": "bool", "id": 5 }
+          }
+        },
+        "ReqFetchSeerReport": {
+          "fields": {
+            "uuid": { "type": "string", "id": 1 }
+          }
+        },
+        "ResFetchSeerReport": {
+          "fields": {
+            "report": { "type": "SeerReport", "id": 2 }
+          }
+        },
+        "SeerReport": {
+          "fields": {
+            "uuid": { "type": "string", "id": 1 },
+            "events": { "rule": "repeated", "type": "SeerEvent", "id": 2 },
+            "rounds": { "rule": "repeated", "type": "SeerRound", "id": 3 }
+          }
+        },
+        "SeerEvent": {
+          "fields": {
+            "record_index": { "type": "int32", "id": 1 },
+            "seer_index": { "type": "int32", "id": 2 },
+            "recommends": { "rule": "repeated", "type": "SeerRecommend", "id": 3 }
+          }
+        },
+        "SeerRecommend": {
+          "fields": {
+            "seat": { "type": "int32", "id": 1 },
+            "predictions": { "rule": "repeated", "type": "SeerPrediction", "id": 2 }
+          }
+        },
+        "SeerPrediction": {
+          "fields": {
+            "action": { "type": "int32", "id": 1 },
+            "score": { "type": "int32", "id": 2 }
+          }
+        },
+        "SeerRound": {
+          "fields": {
+            "chang": { "type": "uint32", "id": 1 },
+            "ju": { "type": "uint32", "id": 2 },
+            "ben": { "type": "uint32", "id": 3 },
+            "player_scores": { "rule": "repeated", "type": "SeerScore", "id": 4 }
+          }
+        },
+        "SeerScore": {
+          "fields": {
+            "seat": { "type": "uint32", "id": 1 },
+            "rating": { "type": "uint32", "id": 2 }
           }
         },
         "RecordNoTile": {
@@ -96,7 +153,8 @@
         },
         "Lobby": {
           "methods": {
-            "fetchGameRecord": { "requestType": "ReqGameRecord", "responseType": "ResGameRecord" }
+            "fetchGameRecord": { "requestType": "ReqGameRecord", "responseType": "ResGameRecord" },
+            "fetchSeerReport": { "requestType": "ReqFetchSeerReport", "responseType": "ResFetchSeerReport" }
           }
         }
       }

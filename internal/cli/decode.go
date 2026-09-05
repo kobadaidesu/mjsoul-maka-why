@@ -12,11 +12,16 @@ import (
 	"mjcap/internal/capture"
 	"mjcap/internal/decode"
 	"mjcap/internal/extract"
+
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// Measured 2026-09-05: opening a replay sent this method and its response
-// carried the record (docs/protocol-findings.md#phase1-live-capture).
-const fetchGameRecordMethod = ".lq.Lobby.fetchGameRecord"
+// Measured 2026-09-05: opening a replay sent fetchGameRecord and showing MAKA
+// sent fetchSeerReport (docs/protocol-findings.md#phase1-live-capture).
+const (
+	fetchGameRecordMethod = ".lq.Lobby.fetchGameRecord"
+	fetchSeerReportMethod = ".lq.Lobby.fetchSeerReport"
+)
 
 func runDecode(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
@@ -51,13 +56,37 @@ func runDecode(args []string, stderr io.Writer) int {
 		logger.Error("open capture", "error", err)
 		return 1
 	}
-	var games []extract.Game
+	type pendingGame struct {
+		game   extract.Game
+		detail decode.GameDetail
+		seq    uint64
+	}
+	var pending []pendingGame
+	reports := map[string]protoreflect.Message{}
 	replayErr := capture.Replay(f, func(e capture.Event) error {
 		if err := checkCaptureBinding(e, n, meta); err != nil {
 			return err
 		}
 		frame := d.Observe(e)
-		if frame.Kind != "response" || frame.Name != fetchGameRecordMethod || frame.Message == nil {
+		if frame.Kind != "response" || frame.Message == nil {
+			return nil
+		}
+		switch frame.Name {
+		case fetchSeerReportMethod:
+			report, err := decode.MessageField(frame.Message, "report")
+			if err != nil {
+				return fmt.Errorf("seq %d: %w", e.Seq, err)
+			}
+			reportUUID, err := decode.StringField(report, "uuid")
+			if err != nil {
+				return fmt.Errorf("seq %d: %w", e.Seq, err)
+			}
+			if reportUUID != "" {
+				reports[reportUUID] = report
+			}
+			return nil
+		case fetchGameRecordMethod:
+		default:
 			return nil
 		}
 		head, err := decode.MessageField(frame.Message, "head")
@@ -79,14 +108,7 @@ func runDecode(args []string, stderr io.Writer) int {
 		if err != nil {
 			return fmt.Errorf("seq %d: %w", e.Seq, err)
 		}
-		issues := len(game.Issues)
-		decisions := 0
-		for _, r := range game.Rounds {
-			issues += len(r.Issues)
-			decisions += len(r.Decisions)
-		}
-		logger.Info("game record reconstructed", "seq", e.Seq, "rounds", len(game.Rounds), "decisions", decisions, "issues", issues, "record_version", game.Version)
-		games = append(games, game)
+		pending = append(pending, pendingGame{game: game, detail: detail, seq: e.Seq})
 		return nil
 	})
 	closeErr := f.Close()
@@ -94,9 +116,30 @@ func runDecode(args []string, stderr io.Writer) int {
 		logger.Error("decode capture", "error", errors.Join(replayErr, closeErr))
 		return 1
 	}
-	if len(games) == 0 {
+	if len(pending) == 0 {
 		logger.Error("no matching game record response in capture")
 		return 1
+	}
+	var games []extract.Game
+	for _, p := range pending {
+		if report, ok := reports[p.game.UUID]; ok {
+			if err := extract.JoinSeer(&p.game, p.detail, report); err != nil {
+				logger.Error("join seer report", "seq", p.seq, "error", err)
+				return 1
+			}
+		}
+		issues, decisions, joined := len(p.game.Issues), 0, 0
+		for _, r := range p.game.Rounds {
+			issues += len(r.Issues)
+			decisions += len(r.Decisions)
+			for _, d := range r.Decisions {
+				if d.Maka != nil {
+					joined++
+				}
+			}
+		}
+		logger.Info("game record reconstructed", "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "issues", issues, "record_version", p.game.Version)
+		games = append(games, p.game)
 	}
 	encoded, err := json.MarshalIndent(games, "", "  ")
 	if err != nil {
