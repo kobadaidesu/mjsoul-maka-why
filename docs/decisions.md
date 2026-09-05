@@ -134,3 +134,18 @@ Profile がポインタ field を持つため、capture binding の比較は str
 - 牌エンコードは実測式（110/210 + 10×suit + rank、rank0=赤5）を関数 1 箇所に隔離し、範囲外 action は Tile 空のまま raw 保持。
 - rating はグレード変換規則が未確認のため raw uint のみ出力。UI「全体評価」は SeerReport に無く、取得元未確認のため出力しない。
 - 鳴き機会・カン・和了判断は `maka_side_evaluations` として局に保持（kind: call_opportunity / kan_decision / win_decision）。行動値の意味は findings に記録した範囲のみ注記し、コードでは解釈しない。
+
+## 2026-09-05: Phase 4 store と MCP server
+
+ユーザー承認（「マージした 次のPhaseどうぞ」）により Phase 4 に着手。
+
+依存追加: [github.com/modelcontextprotocol/go-sdk v1.7.0](https://github.com/modelcontextprotocol/go-sdk)（MCP 公式 Go SDK、憲法の第一候補）。標準ライブラリに MCP 実装はない。
+推移依存として google/jsonschema-go、go-json-experiment/json、segmentio/encoding・asm、yosida95/uritemplate、golang-jwt/jwt（graph 上）、x/oauth2・x/sync・x/sys を go.mod で確認した。stdio serving と in-memory テスト transport のみ使用し、HTTP/auth 系機能は使わない。
+
+- `internal/store`: `data/games/{uuid}.json` に `schema_version: 1` 付きで atomic 保存（temp → fsync → rename → dir sync、0600/0700）。別 schema_version は silent 再解釈せず明示エラー。uuid はファイル名安全性を検証。`captured_at` は capture event の時刻。
+- `mjcap decode --games-dir` が保存経路。store は decode 結果のみを扱い、ネットワーク・Chrome に触れない。
+- `internal/mcp`: 公式 SDK の typed tool（`AddTool`）で read-only の `list_games` / `get_round` / `find_mistakes` を提供。ゲームへのアクセス機能は公開しない。
+- self_seat はどの seat がユーザーかを特定できる実測がまだ無いため保存せず、`find_mistakes` は seat 省略時に憲法どおり明示エラーを返す（seat 0 への fallback をしない）。account_id 照合による自動判定は個人識別 field を読むため採用しなかった。
+- mode は head.config の raw 値（category / mode / mode_id）のみ保存し、部屋名・長さへの変換は未実測のため行わない。UI「全体評価」も取得元未実測のため出力しない。
+- `find_mistakes` は `score_delta_vs_best >= threshold`（既定 10）を delta 降順で返す。実選択が候補外の決断は件数のみ報告し、順位付けしない。
+- 検証: 合成 store/mcp テスト（in-memory transport で 3 tool、seat 必須エラー、schema version 拒否、atomic 上書き）に加え、実牌譜を `--games-dir` で保存し、stdio の実プロセスに対して initialize → tools/list → 3 tool 呼び出し → EOF 正常終了を確認した。stdin EOF はクライアント切断として exit 0 とする。

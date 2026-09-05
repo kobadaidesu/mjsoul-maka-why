@@ -56,12 +56,22 @@ type Decision struct {
 // Game is the Phase 2 reconstruction of one record. UUID identifies the game
 // record itself; it carries no player identity.
 type Game struct {
-	UUID     string   `json:"game_uuid"`
-	Version  uint64   `json:"record_version"`
-	Seats    int      `json:"seats"`
-	MakaUUID string   `json:"maka_uuid,omitempty"`
-	Rounds   []Round  `json:"rounds"`
-	Issues   []string `json:"issues,omitempty"`
+	UUID     string    `json:"game_uuid"`
+	Version  uint64    `json:"record_version"`
+	Seats    int       `json:"seats"`
+	Mode     *GameMode `json:"mode,omitempty"`
+	MakaUUID string    `json:"maka_uuid,omitempty"`
+	Rounds   []Round   `json:"rounds"`
+	Issues   []string  `json:"issues,omitempty"`
+}
+
+// GameMode carries the raw mode identifiers from the record head. Their
+// mapping to room/length names shown by the client is not yet measured, so
+// no interpretation happens here.
+type GameMode struct {
+	Category uint64 `json:"category,omitempty"`
+	Mode     uint64 `json:"mode,omitempty"`
+	ModeID   uint64 `json:"mode_id,omitempty"`
 }
 
 // Measured action names (docs/protocol-findings.md#phase2-record-decode).
