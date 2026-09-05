@@ -20,44 +20,48 @@ var tilePattern = regexp.MustCompile(`^[0-9][mpsz]$`)
 // HandIndex counts every played hand including repeats, KyokuIndex encodes
 // wind*4+kyoku-1 and does not advance on honba repeats.
 type Round struct {
-	HandIndex      int        `json:"hand_index"`
-	KyokuIndex     int        `json:"kyoku_index"`
-	Wind           string     `json:"wind"`
-	Kyoku          int        `json:"kyoku"`
-	Honba          int        `json:"honba"`
-	Label          string     `json:"label"`
-	DealerSeat     int        `json:"dealer_seat"`
-	ScoresStart    []int64    `json:"scores_start"`
-	DoraIndicators []string   `json:"dora_indicators"`
-	FirstAction    int        `json:"first_action_index"`
-	Decisions      []Decision `json:"decisions"`
-	EndStatus      string     `json:"end_status"`
-	EndActionName  string     `json:"end_action_name,omitempty"`
-	EndScores      []int64    `json:"end_scores,omitempty"`
-	Issues         []string   `json:"issues,omitempty"`
+	HandIndex      int            `json:"hand_index"`
+	KyokuIndex     int            `json:"kyoku_index"`
+	Wind           string         `json:"wind"`
+	Kyoku          int            `json:"kyoku"`
+	Honba          int            `json:"honba"`
+	Label          string         `json:"label"`
+	DealerSeat     int            `json:"dealer_seat"`
+	ScoresStart    []int64        `json:"scores_start"`
+	DoraIndicators []string       `json:"dora_indicators"`
+	FirstAction    int            `json:"first_action_index"`
+	Decisions      []Decision     `json:"decisions"`
+	EndStatus      string         `json:"end_status"`
+	EndActionName  string         `json:"end_action_name,omitempty"`
+	EndScores      []int64        `json:"end_scores,omitempty"`
+	MakaRatings    []SeerRating   `json:"maka_ratings,omitempty"`
+	SeerSideEvals  []SeerSideEval `json:"maka_side_evaluations,omitempty"`
+	Issues         []string       `json:"issues,omitempty"`
 }
 
 // Decision is one discard decision. TurnIndex is this seat's 1-based discard
 // count within the round; the MAKA join key is intentionally not fixed here.
 type Decision struct {
-	Seat        int      `json:"seat"`
-	TurnIndex   int      `json:"turn_index"`
-	ActionIndex int      `json:"action_index"`
-	HandBefore  []string `json:"hand_before"`
-	Draw        string   `json:"draw,omitempty"`
-	Discard     string   `json:"discard"`
-	Tsumogiri   bool     `json:"tsumogiri"`
-	Riichi      bool     `json:"riichi"`
+	Seat        int       `json:"seat"`
+	TurnIndex   int       `json:"turn_index"`
+	ActionIndex int       `json:"action_index"`
+	HandBefore  []string  `json:"hand_before"`
+	Draw        string    `json:"draw,omitempty"`
+	Discard     string    `json:"discard"`
+	Tsumogiri   bool      `json:"tsumogiri"`
+	Riichi      bool      `json:"riichi"`
+	Maka        *MakaEval `json:"maka,omitempty"`
 }
 
 // Game is the Phase 2 reconstruction of one record. UUID identifies the game
 // record itself; it carries no player identity.
 type Game struct {
-	UUID    string   `json:"game_uuid"`
-	Version uint64   `json:"record_version"`
-	Seats   int      `json:"seats"`
-	Rounds  []Round  `json:"rounds"`
-	Issues  []string `json:"issues,omitempty"`
+	UUID     string   `json:"game_uuid"`
+	Version  uint64   `json:"record_version"`
+	Seats    int      `json:"seats"`
+	MakaUUID string   `json:"maka_uuid,omitempty"`
+	Rounds   []Round  `json:"rounds"`
+	Issues   []string `json:"issues,omitempty"`
 }
 
 // Measured action names (docs/protocol-findings.md#phase2-record-decode).

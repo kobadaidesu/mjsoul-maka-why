@@ -273,3 +273,42 @@ NOTIFY（0x01）は 3 capture 通算で未観測のまま。lobby の非同期�
 ### 未実測のまま残る事項
 
 - `data_url` 配送の実挙動、`records` layout、`GameAction.type` 値の意味、`RecordBaBei`（三麻）、`muyu` / `yongchang` などの未読 field、`RecordLiuJu` / `RecordNoTile` の詳細構造（終局種別の記録のみ実装）。
+
+<a id="phase3-maka-join"></a>
+## 2026-09-05: Phase 3 MAKA（Seer）結合の実測と検証
+
+確認日時: 2026-09-05 19:00–19:20 JST。対象は [Phase 1 実捕捉](#phase1-live-capture) の同一牌譜（金の間・四人南、events 472 / rounds 10 の SeerReport）。
+確認方法: 実装した `mjcap decode` の結合結果と、調査スクリプトによる全数照合、Phase 1 スクリーンショットとの突合。
+
+### 結合キー（CONFIRMED）
+
+- `SeerEvent.record_index` は **`GameDetailRecords.actions` の type=1 だけを数えた部分列の添字**で、「その判断を開いたゲームイベント」を指す。アンカー検証: 南2局10巡目の event（record_index=614）は type=1 部分列の 614 番目 = seat2 の 3p ツモ（直後の 615 番目が検証済みの 3p ツモ切り）。
+- 開いたイベントの内訳（472 events）: 自分のツモ `RecordDealTile` 345 / 副露後 `RecordChiPengGang` 18 / 開局（親の第一打）`RecordNewRound` 10 / **他家の打牌** `RecordDiscardTile` 99（鳴き・ロン機会。recommend の seat は判断者であり打牌者と不一致 99/99）。
+- 判断への解決規則: 同一 seat の次の `RecordDiscardTile`（打牌判断）、`RecordAnGangAddGang`（カン選択 1 件）、または `RecordHule`（和了選択 2 件）が局内に現れる。**全 472 events / 479 recommends が矛盾なく解決**（= 打牌判断 370 + 鳴き機会 106 + 和了 2 + カン 1）。
+- 1 つの打牌が 2 seat に同時に機会を開く event が 7 件あり、`recommends` が 2 要素になる（それぞれ独立に結合）。
+- MAKA event が付かない打牌は 37 件で、**37/37 がリーチ後の強制ツモ切り**だった。
+- `SeerEvent.seer_index` は別カウンタで、リーチ・カン発生時に record_index との差が +1〜+2 ずつ広がる観測。意味は **未確認**、結合には使用しない。
+- `SeerRound{chang, ju, ben}` は再構築した局（KyokuIndex, Honba）と 10/10 一致し、`player_scores` の rating を局へ結合した。
+
+### `SeerPrediction.action` のエンコード（CONFIRMED）
+
+- `action = 110 + 10×suit + rank`（suit: 0=m, 1=p, 2=s, 3=z / rank 0 = 赤5）は **その牌を切る**。全 1,038 個の該当予測すべてで、対応する牌が判断時の再構築手牌に存在した（矛盾 0）。
+- `action = 210 + 10×suit + rank` は **リーチ宣言してその牌を切る**。該当 7 予測すべてで牌が手牌に存在し、実際にリーチした 7 判断すべてで宣言打牌が 2xx の牌と一致した。
+- 小さい値は行動: `1` = 見送り（鳴き機会のほぼ全てで最高 score）、`7` = 和了（3 件すべてで直後にその seat の `RecordHule`）、`6` = カン（1 件、実行された）、`5` = ポン（1 件、実行された）。`5`/`6` は観測 1 件ずつのため CANDIDATE、`2`/`3`/`4` は出現したが対応行動は **未確認**。値そのものは正規化出力に raw のまま保持する。
+
+### score の方向と正規化（CONFIRMED / 一部未確認）
+
+- score は 1–99 の整数で、predictions は降順に並ぶ。**高いほど強い推奨**であることを次で確認した:
+  1. UI は最高 score の候補（南2局10巡目では 東=35）を金色バッジで強調表示（Phase 1 スクリーンショット）。
+  2. 和了推奨 99・カン推奨 97 はいずれも実行された。
+  3. 実プレイヤーの打牌は 61%（225/370）で最高 score 候補と一致。
+- これに基づき `score_delta_vs_best = best_score − actual_score`（0 = 最善）へ正規化する。実際の選択が上位候補（最大 3 件）に含まれない場合（23/370）は delta を **出力しない**（0 やゲタ値で埋めない）。
+- score の厳密な意味（確率配分か評価値か、点数期待とどう関係するか）は **未確認**。差分は「推奨度の差」以上の意味を主張しない。
+
+### UI との受け入れ照合
+
+南2局10巡目（検証済みスクリーンショット）: 正規化 JSON の candidates は `{1z:35, 4s:16, 8p:12}` で、画面のバッジ（東の上に 35、4s の上に 16、8p の上に 12）と数値・位置とも一致。実打牌（3p ツモ切り）は候補外でバッジも無く、JSON でも `actual_score` / `score_delta_vs_best` が欠落する（**非最善打の一致確認**）。局（南2局）・seat（自家）・巡目（10）の対応も UI 表示と一致した。
+
+### 未確認のまま残る事項
+
+- `seer_index` の意味。`SeerScore.rating` のグレード表示への変換規則（十の位=グレード仮説は CANDIDATE のまま raw 出力）。UI「全体評価」の取得元。action `2`/`3`/`4`。複数和了（ダブロン）時の解決順。`fetchSeerReportList` / `fetchSeerInfo` の各 field 意味。

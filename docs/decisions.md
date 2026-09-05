@@ -123,3 +123,14 @@ Profile がポインタ field を持つため、capture binding の比較は str
 - 再構築で説明できない打牌・未実測 action 名は局の `issues` に記録して処理を続行する（capture 全体を落とさない）。
 - 出力は seat・牌・点数・game uuid のみ。`RecordGame.accounts`（nickname / account_id 等）は読み取らない。匿名化保存そのものは Phase 3 以降の `internal/privacy` の責務。
 - 検証: 実牌譜 10 局・407 決断 issues 0、全和了手牌一致（ロン 8: hand==再構築、ツモ 2: hand+hu_tile==再構築）、点数連続性 9/9、UI 目視 1 決断。`make build` / `make test` / `make lint` / `go test -race ./...` 成功。
+
+## 2026-09-05: Phase 3 MAKA 結合の設計判断
+
+ユーザー承認（「次のPhaseどうぞ」）により Phase 3 に着手。追加依存はなし。
+
+- 結合は [実測した規則](protocol-findings.md#phase3-maka-join) のみ: `record_index` → type=1 部分列 → 同一 seat の次の打牌/カン/和了。`seer_index` は意味未確認のため使用せず raw 出力のみ。
+- 解決できない event・複数 recommends の想定外形・範囲外 index は issue として記録し、推測で埋めない。実牌譜では issue 0 を確認。
+- `score_delta_vs_best` は方向確認（UI 強調・実行された 99/97 推奨・best 一致率 61%）後に best − actual で正規化。実選択が候補外の場合は delta を出力しない（0 埋め禁止）。
+- 牌エンコードは実測式（110/210 + 10×suit + rank、rank0=赤5）を関数 1 箇所に隔離し、範囲外 action は Tile 空のまま raw 保持。
+- rating はグレード変換規則が未確認のため raw uint のみ出力。UI「全体評価」は SeerReport に無く、取得元未確認のため出力しない。
+- 鳴き機会・カン・和了判断は `maka_side_evaluations` として局に保持（kind: call_opportunity / kan_decision / win_decision）。行動値の意味は findings に記録した範囲のみ注記し、コードでは解釈しない。
