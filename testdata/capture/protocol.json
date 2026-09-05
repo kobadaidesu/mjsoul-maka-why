@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "evidence_level": "CONFIRMED",
+  "evidence_ref": "SYNTHETIC fixture only; not evidence of a Mahjong Soul protocol",
+  "game_version": "synthetic-game",
+  "liqi_resource_version": "synthetic-schema",
+  "liqi_sha256": "e05474b55fa7fdbf714e65b45eebcbc7a1c6104d7a5e3ce9b66f2f5aa484a725",
+  "wrapper_message": ".fixture.Envelope",
+  "name_field": "method_label",
+  "data_field": "content",
+  "type_offset": 0,
+  "notify": 17,
+  "request": 34,
+  "response": 51,
+  "notify_wrapper_offset": 1,
+  "rpc_wrapper_offset": 3,
+  "number_offset": 1,
+  "number_bytes": 2,
+  "byte_order": "little"
+}

@@ -1,0 +1,11 @@
+{"method":"Network.webSocketCreated","params":{"requestId":"ws-a","url":"wss://example.invalid/socket"}}
+{"method":"Network.webSocketFrameSent","params":{"requestId":"ws-a","timestamp":1,"response":{"opcode":2,"mask":true,"payloadData":"AAEC/w=="}}}
+{"method":"Network.webSocketFrameReceived","params":{"requestId":"ws-a","timestamp":2,"response":{"opcode":1,"mask":false,"payloadData":"synthetic text"}}}
+{"method":"Network.webSocketFrameReceived","params":{"requestId":"ws-a","timestamp":3,"response":{"opcode":2,"mask":false,"payloadData":"%%%"}}}
+{"method":"Network.webSocketClosed","params":{"requestId":"ws-a","timestamp":4}}
+{"method":"Network.responseReceived","params":{"requestId":"http-a","type":"Fetch","response":{"url":"https://example.invalid/record?token=synthetic-secret","status":200,"mimeType":"application/json","headers":{"Set-Cookie":"synthetic-cookie"}}}}
+{"method":"Network.loadingFinished","params":{"requestId":"http-a","timestamp":5,"encodedDataLength":32}}
+{"id":100,"result":{"body":"{\"synthetic\":true}","base64Encoded":false}}
+{"method":"Network.responseReceived","params":{"requestId":"asset-a","type":"Image","response":{"url":"https://example.invalid/static.png","status":200,"mimeType":"image/png"}}}
+{"method":"Network.loadingFinished","params":{"requestId":"asset-a","timestamp":6,"encodedDataLength":100}}
+{"method":"Network.futureEvent","params":{"unknown_bytes":"retained"}}

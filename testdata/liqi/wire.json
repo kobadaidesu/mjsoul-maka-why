@@ -1,0 +1,1 @@
+{"nested":{"fixture":{"nested":{"Envelope":{"fields":{"method_label":{"type":"string","id":7},"content":{"type":"bytes","id":9}}},"Req":{"fields":{}},"Res":{"fields":{}},"Notice":{"fields":{}},"Service":{"methods":{"call":{"requestType":"Req","responseType":"Res"},"other":{"requestType":"Req","responseType":"Notice"}}}}}}}

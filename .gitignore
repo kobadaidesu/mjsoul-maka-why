@@ -1,0 +1,8 @@
+/bin/
+/.tools/
+/.cache/
+data/captures/
+data/games/
+*.log
+privacy.key
+.DS_Store

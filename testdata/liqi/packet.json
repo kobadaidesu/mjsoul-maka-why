@@ -1,0 +1,12 @@
+{
+  "blob": "AP8B",
+  "children": [{"value": 42}],
+  "labels": {"a": {"value": 3}},
+  "state": "YES",
+  "text": "synthetic data",
+  "explicit": 0,
+  "shared": {"label": "synthetic"},
+  "nums": ["-1", "9223372036854775807"],
+  "flagMap": {"7": true},
+  "localState": "ON"
+}

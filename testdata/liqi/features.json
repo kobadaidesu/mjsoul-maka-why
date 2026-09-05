@@ -1,0 +1,34 @@
+{
+  "nested": {
+    "common": {"nested": {
+      "Shared": {"fields": {"label": {"type": "string", "id": 1}}}
+    }},
+    "synthetic": {"nested": {
+      "State": {"values": {"ZERO": 0, "YES": 1, "NEGATIVE": -1}},
+      "Packet": {
+        "oneofs": {"choice": {"oneof": ["text", "number"]}},
+        "fields": {
+          "blob": {"type": "bytes", "id": 1},
+          "children": {"rule": "repeated", "type": "Child", "id": 2},
+          "labels": {"keyType": "string", "type": "Child", "id": 3},
+          "state": {"type": "State", "id": 4},
+          "text": {"type": "string", "id": 5},
+          "number": {"type": "int32", "id": 6},
+          "explicit": {"rule": "optional", "type": "int32", "id": 7, "options": {"proto3_optional": true}},
+          "shared": {"type": ".common.Shared", "id": 8},
+          "nums": {"rule": "repeated", "type": "sint64", "id": 9, "options": {"packed": false}},
+          "flag_map": {"keyType": "int32", "type": "bool", "id": 10},
+          "localState": {"type": "Child.Local", "id": 11}
+        },
+        "nested": {
+          "Child": {
+            "fields": {"value": {"type": "uint32", "id": 1}, "owner": {"type": "Packet", "id": 2}},
+            "nested": {"Local": {"values": {"OFF": 0, "ON": 1}}}
+          }
+        }
+      },
+      "Empty": {"fields": {}},
+      "Endpoint": {"methods": {"example": {"requestType": "Packet", "responseType": "Empty"}}}
+    }}
+  }
+}
