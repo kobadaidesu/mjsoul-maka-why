@@ -8,13 +8,39 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"mjcap/internal/capture"
 	"mjcap/internal/decode"
 	"mjcap/internal/extract"
+	"mjcap/internal/store"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
+
+// gameMode copies the raw mode identifiers from RecordGame.config without
+// interpreting them; missing pieces simply stay unset.
+func gameMode(head protoreflect.Message) *extract.GameMode {
+	config, err := decode.MessageField(head, "config")
+	if err != nil {
+		return nil
+	}
+	mode := &extract.GameMode{}
+	if v, err := decode.UintField(config, "category"); err == nil {
+		mode.Category = v
+	}
+	if m, err := decode.MessageField(config, "mode"); err == nil {
+		if v, err := decode.UintField(m, "mode"); err == nil {
+			mode.Mode = v
+		}
+	}
+	if meta, err := decode.MessageField(config, "meta"); err == nil {
+		if v, err := decode.UintField(meta, "mode_id"); err == nil {
+			mode.ModeID = v
+		}
+	}
+	return mode
+}
 
 // Measured 2026-09-05: opening a replay sent fetchGameRecord and showing MAKA
 // sent fetchSeerReport (docs/protocol-findings.md#phase1-live-capture).
@@ -28,6 +54,7 @@ func runDecode(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	uuid := fs.String("game-uuid", "", "only decode the record with this game uuid")
 	out := fs.String("out", "", "write reconstruction JSON to this new file (default: stdout)")
+	gamesDir := fs.String("games-dir", "", "also store each game as {uuid}.json (schema_version 1) in this private directory")
 	var names nameOptions
 	names.flags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -57,9 +84,10 @@ func runDecode(args []string, stderr io.Writer) int {
 		return 1
 	}
 	type pendingGame struct {
-		game   extract.Game
-		detail decode.GameDetail
-		seq    uint64
+		game       extract.Game
+		detail     decode.GameDetail
+		seq        uint64
+		capturedAt time.Time
 	}
 	var pending []pendingGame
 	reports := map[string]protoreflect.Message{}
@@ -108,7 +136,8 @@ func runDecode(args []string, stderr io.Writer) int {
 		if err != nil {
 			return fmt.Errorf("seq %d: %w", e.Seq, err)
 		}
-		pending = append(pending, pendingGame{game: game, detail: detail, seq: e.Seq})
+		game.Mode = gameMode(head)
+		pending = append(pending, pendingGame{game: game, detail: detail, seq: e.Seq, capturedAt: e.CapturedAt})
 		return nil
 	})
 	closeErr := f.Close()
@@ -139,7 +168,18 @@ func runDecode(args []string, stderr io.Writer) int {
 			}
 		}
 		logger.Info("game record reconstructed", "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "issues", issues, "record_version", p.game.Version)
+		if *gamesDir != "" {
+			path, err := store.Save(*gamesDir, store.File{CapturedAt: p.capturedAt, Game: p.game})
+			if err != nil {
+				logger.Error("store game", "error", err)
+				return 1
+			}
+			logger.Info("game stored", "path", path)
+		}
 		games = append(games, p.game)
+	}
+	if *out == "" && *gamesDir != "" {
+		return 0
 	}
 	encoded, err := json.MarshalIndent(games, "", "  ")
 	if err != nil {

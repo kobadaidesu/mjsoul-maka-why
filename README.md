@@ -2,8 +2,9 @@
 
 ユーザー自身がブラウザで開いた牌譜と MAKA 表示の通信を読み取り専用で観測し、将来 MCP から説明可能にする Go プロジェクトです。
 
-Phase 0 は完了し、承認を受けて **Phase 1 の観測（2026-09-05 実捕捉）、Phase 2 の牌譜 decode、Phase 3 の MAKA 結合を実装しました。**
-`capture`、オフラインの `inspect`、牌譜 + MAKA 再構築の `decode` が利用できます。匿名化保存の本実装、正規化 schema の確定、MCP（Phase 4）は未実装・未承認です。
+Phase 0〜4 を実装済みです（各 Phase はユーザー承認を経て進行、2026-09-05 実捕捉ベース）。
+`capture`、オフラインの `inspect`、牌譜 + MAKA 再構築と保存の `decode`、保存済みゲームを LLM へ提供する `mcp` が利用できます。
+保存データはプレイヤー名・account 情報を含まないため、現状の匿名化は「識別子を読まない」ことで担保しています（name_hash 等の pseudonymization は識別子を保存する必要が生じた時点で `internal/privacy` に実装します）。
 
 実捕捉により WebSocket envelope、`.lq.Lobby.fetchGameRecord`、MAKA（Seer 系 API `.lq.Lobby.fetchSeerReport`）を確認しました。詳細は [実測記録](docs/protocol-findings.md#phase1-live-capture) を参照してください。
 静的取得した liqi は実通信を unknown field なしで decode できましたが、**実クライアントがロードした schema との同一性は未確認です**（NOTIFY frame も未観測のため evidence profile は未作成）。
@@ -124,6 +125,22 @@ capture 済み JSONL から牌譜応答を再構築します。実測済み enve
 同じ capture に対応する `fetchSeerReport` 応答があれば MAKA も結合し、各打牌決断に候補（牌・リーチ・score）と `score_delta_vs_best`（0=最善、実選択が候補外なら省略）、局に seat 別 rating、鳴き機会・カン・和了判断を side evaluations として付与します（[記録](docs/protocol-findings.md#phase3-maka-join)）。
 実測済みの inline `actions` layout だけを decode し、`data_url` 配送・`records` layout は未実測として明示的に失敗します。再構築で説明できない状態は `issues` として局に記録されます。
 2026-09-05 の実牌譜では 10 局・407 決断を issues 0 で再構築し、全和了手牌・局間の点数連続性・UI 目視と一致しました。詳細は [実測記録](docs/protocol-findings.md#phase2-record-decode) を参照してください。
+
+## Phase 4 の store と MCP server
+
+`decode --games-dir data/games` が各ゲームを `{uuid}.json`（`schema_version: 1`、0600、atomic 書き込み）で保存します。
+
+```sh
+./bin/mjcap mcp --games-dir data/games
+```
+
+stdio の read-only MCP server が起動し、以下の 3 tool を提供します。
+
+- `list_games` — 保存済みゲームの一覧（uuid、captured_at、局数、raw mode、最終点数、MAKA 結合有無）
+- `get_round` — `hand_index` 指定で 1 局の全決断・手牌・MAKA 候補・rating を返す
+- `find_mistakes` — `score_delta_vs_best >= threshold`（既定 10）の打牌を delta 降順で返す。**保存データはどの seat がユーザーかを持たないため `seat` は必須**（省略時は明示エラー）
+
+server はゲーム・Chrome・ネットワークへ一切接続しません。実選択が MAKA 候補外だった決断は delta 不明として件数のみ報告します。
 
 ## ディレクトリと private data
 
