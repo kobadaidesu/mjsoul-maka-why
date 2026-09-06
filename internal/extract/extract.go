@@ -50,19 +50,27 @@ type Decision struct {
 	Discard     string    `json:"discard"`
 	Tsumogiri   bool      `json:"tsumogiri"`
 	Riichi      bool      `json:"riichi"`
+	Board       *Board    `json:"board_before,omitempty"`
 	Maka        *MakaEval `json:"maka,omitempty"`
 }
 
 // Game is the Phase 2 reconstruction of one record. UUID identifies the game
 // record itself; it carries no player identity.
 type Game struct {
-	UUID     string    `json:"game_uuid"`
-	Version  uint64    `json:"record_version"`
-	Seats    int       `json:"seats"`
-	Mode     *GameMode `json:"mode,omitempty"`
-	MakaUUID string    `json:"maka_uuid,omitempty"`
-	Rounds   []Round   `json:"rounds"`
-	Issues   []string  `json:"issues,omitempty"`
+	UUID    string    `json:"game_uuid"`
+	Version uint64    `json:"record_version"`
+	Seats   int       `json:"seats"`
+	Mode    *GameMode `json:"mode,omitempty"`
+	// StartTime/EndTime are the game's own unix-second stamps from the record
+	// head; they order games by when they were played, not when captured.
+	StartTime uint64 `json:"start_time,omitempty"`
+	EndTime   uint64 `json:"end_time,omitempty"`
+	// SelfSeat is the seat the capturing user played, when the capture allowed
+	// matching it (login traffic present). Only the seat number is kept.
+	SelfSeat *int     `json:"self_seat,omitempty"`
+	MakaUUID string   `json:"maka_uuid,omitempty"`
+	Rounds   []Round  `json:"rounds"`
+	Issues   []string `json:"issues,omitempty"`
 }
 
 // GameMode carries the raw mode identifiers from the record head. Their
@@ -101,6 +109,7 @@ func Rounds(uuid string, detail decode.GameDetail) (Game, error) {
 	game := Game{UUID: uuid, Version: detail.Version}
 	var round *Round
 	var seats []seatState
+	var board *boardState
 	finish := func(status, name string) {
 		if round != nil {
 			round.EndStatus, round.EndActionName = status, name
@@ -119,23 +128,33 @@ func Rounds(uuid string, detail decode.GameDetail) (Game, error) {
 		switch action.Name {
 		case actionNewRound:
 			finish("interrupted_by_new_round", "")
-			r, s, err := newRound(action, len(game.Rounds))
+			r, s, b, err := newRound(action, len(game.Rounds))
 			if err != nil {
 				return game, fmt.Errorf("action %d: %w", action.Index, err)
 			}
-			round, seats = &r, s
+			round, seats, board = &r, s, b
 		case actionDealTile, actionDiscardTile, actionChiPengGang, actionAnGangAddGang, actionBaBei:
 			if round == nil {
 				game.Issues = append(game.Issues, fmt.Sprintf("action %d (%s) outside any round", action.Index, action.Name))
 				continue
 			}
-			if err := applyToRound(round, seats, action); err != nil {
+			if err := applyToRound(round, seats, board, action); err != nil {
 				round.Issues = append(round.Issues, err.Error())
 			}
 		case actionHule:
 			if round != nil {
 				if scores, err := decode.IntsField(action.Message, "scores"); err == nil && len(scores) > 0 {
 					round.EndScores = scores
+				}
+				// old_scores includes every riichi-stick deduction, so it must
+				// equal the tracked board balance right before the win.
+				if old, err := decode.IntsField(action.Message, "old_scores"); err == nil && len(old) > 0 && board != nil {
+					for i := range old {
+						if i >= len(board.scores) || old[i] != board.scores[i] {
+							round.Issues = append(round.Issues, fmt.Sprintf("action %d: tracked scores %v disagree with hule old_scores %v", action.Index, board.scores, old))
+							break
+						}
+					}
 				}
 			}
 			finish("hule", action.Name)
@@ -159,34 +178,34 @@ func Rounds(uuid string, detail decode.GameDetail) (Game, error) {
 	return game, nil
 }
 
-func newRound(action decode.ActionRecord, handIndex int) (Round, []seatState, error) {
+func newRound(action decode.ActionRecord, handIndex int) (Round, []seatState, *boardState, error) {
 	m := action.Message
 	chang, err := decode.UintField(m, "chang")
 	if err != nil {
-		return Round{}, nil, err
+		return Round{}, nil, nil, err
 	}
 	ju, err := decode.UintField(m, "ju")
 	if err != nil {
-		return Round{}, nil, err
+		return Round{}, nil, nil, err
 	}
 	ben, err := decode.UintField(m, "ben")
 	if err != nil {
-		return Round{}, nil, err
+		return Round{}, nil, nil, err
 	}
 	scores, err := decode.IntsField(m, "scores")
 	if err != nil {
-		return Round{}, nil, err
+		return Round{}, nil, nil, err
 	}
 	doras, err := decode.StringsField(m, "doras")
 	if err != nil {
-		return Round{}, nil, err
+		return Round{}, nil, nil, err
 	}
 	// chang/ju against the round list shown by the client UI: chang=1,ju=1 was
 	// rendered as 南2局 (docs/protocol-findings.md#phase1-live-capture).
 	winds := []string{"east", "south", "west", "north"}
 	labels := []string{"東", "南", "西", "北"}
 	if chang > 3 || ju > 3 {
-		return Round{}, nil, fmt.Errorf("round position chang=%d ju=%d outside the measured range", chang, ju)
+		return Round{}, nil, nil, fmt.Errorf("round position chang=%d ju=%d outside the measured range", chang, ju)
 	}
 	round := Round{
 		HandIndex:      handIndex,
@@ -204,11 +223,11 @@ func newRound(action decode.ActionRecord, handIndex int) (Round, []seatState, er
 	for seat := range seats {
 		tiles, err := decode.StringsField(m, fmt.Sprintf("tiles%d", seat))
 		if err != nil {
-			return Round{}, nil, err
+			return Round{}, nil, nil, err
 		}
 		for _, tile := range tiles {
 			if !tilePattern.MatchString(tile) {
-				return Round{}, nil, fmt.Errorf("seat %d dealt invalid tile code %q", seat, tile)
+				return Round{}, nil, nil, fmt.Errorf("seat %d dealt invalid tile code %q", seat, tile)
 			}
 		}
 		seats[seat].hand = append([]string(nil), tiles...)
@@ -216,22 +235,30 @@ func newRound(action decode.ActionRecord, handIndex int) (Round, []seatState, er
 		// a 14th tile in every measured round.
 		if len(tiles) == 14 {
 			if round.DealerSeat >= 0 {
-				return Round{}, nil, fmt.Errorf("two seats dealt 14 tiles")
+				return Round{}, nil, nil, fmt.Errorf("two seats dealt 14 tiles")
 			}
 			// Which of the 14 tiles is "the draw" is not measured, so the
 			// dealer's first decision keeps an empty Draw.
 			round.DealerSeat = seat
 		} else if len(tiles) != 13 {
-			return Round{}, nil, fmt.Errorf("seat %d dealt %d tiles", seat, len(tiles))
+			return Round{}, nil, nil, fmt.Errorf("seat %d dealt %d tiles", seat, len(tiles))
 		}
 	}
 	if round.DealerSeat < 0 {
-		return Round{}, nil, fmt.Errorf("no seat was dealt 14 tiles")
+		return Round{}, nil, nil, fmt.Errorf("no seat was dealt 14 tiles")
 	}
-	return round, seats, nil
+	tilesLeft, err := decode.UintField(m, "left_tile_count")
+	if err != nil {
+		return Round{}, nil, nil, err
+	}
+	sticks, err := decode.UintField(m, "liqibang")
+	if err != nil {
+		return Round{}, nil, nil, err
+	}
+	return round, seats, newBoardState(scores, doras, tilesLeft, sticks), nil
 }
 
-func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) error {
+func applyToRound(round *Round, seats []seatState, board *boardState, action decode.ActionRecord) error {
 	m := action.Message
 	seatNo, err := decode.UintField(m, "seat")
 	if err != nil {
@@ -252,8 +279,13 @@ func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) e
 		}
 		state.hand = append(state.hand, tile)
 		state.lastDraw = tile
+		if left, err := decode.UintField(m, "left_tile_count"); err == nil {
+			board.tilesLeft = left
+		}
+		board.noteLiqiSuccess(action)
 		if doras, err := decode.StringsField(m, "doras"); err == nil && len(doras) > 0 {
 			round.DoraIndicators = doras
+			board.doras = doras
 		}
 	case actionDiscardTile:
 		tile, err := decode.StringField(m, "tile")
@@ -274,6 +306,7 @@ func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) e
 		}
 		hand := append([]string(nil), state.hand...)
 		sort.Strings(hand)
+		snapshot := board.snapshot()
 		if !removeTile(&state.hand, tile) {
 			return fmt.Errorf("action %d: seat %d discarded %s not present in reconstructed hand", action.Index, seatNo, tile)
 		}
@@ -292,10 +325,16 @@ func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) e
 			Discard:     tile,
 			Tsumogiri:   moqie,
 			Riichi:      liqi || wliqi,
+			Board:       snapshot,
 		})
 		state.lastDraw = ""
+		board.rivers[seatNo] = append(board.rivers[seatNo], tile)
+		if liqi || wliqi {
+			board.riichi[seatNo] = true
+		}
 		if doras, err := decode.StringsField(m, "doras"); err == nil && len(doras) > 0 {
 			round.DoraIndicators = doras
+			board.doras = doras
 		}
 	case actionChiPengGang:
 		tiles, err := decode.StringsField(m, "tiles")
@@ -319,6 +358,7 @@ func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) e
 		}
 		state.melds++
 		state.lastDraw = ""
+		board.melds[seatNo] = append(board.melds[seatNo], Meld{Tiles: append([]string(nil), tiles...), Froms: append([]int64(nil), froms...)})
 	case actionAnGangAddGang:
 		tile, err := decode.StringField(m, "tiles")
 		if err != nil {
@@ -339,12 +379,16 @@ func applyToRound(round *Round, seats []seatState, action decode.ActionRecord) e
 		} else if copies != 1 {
 			return fmt.Errorf("action %d: kan of %s finds %d copies in seat %d hand", action.Index, tile, copies, seatNo)
 		}
+		removed := make([]string, remove)
 		for i := 0; i < remove; i++ {
 			removeTile(&state.hand, tile)
+			removed[i] = tile
 		}
 		state.melds++
+		board.melds[seatNo] = append(board.melds[seatNo], Meld{Tiles: removed, Kan: true})
 		if doras, err := decode.StringsField(m, "doras"); err == nil && len(doras) > 0 {
 			round.DoraIndicators = doras
+			board.doras = doras
 		}
 	case actionBaBei:
 		// Observed only in the schema so far; three-player specifics are

@@ -109,6 +109,36 @@ func TestJoinSeer(t *testing.T) {
 	if byAction[11].Maka != nil {
 		t.Fatalf("post-riichi forced discard must stay unjoined: %+v", byAction[11].Maka)
 	}
+	if c := r.SeerSideEvals; len(c) > 0 {
+		for _, se := range c {
+			for _, cand := range se.Candidates {
+				switch cand.Action {
+				case 1:
+					if cand.Kind != "pass" {
+						t.Fatalf("action 1 kind %q", cand.Kind)
+					}
+				case 5:
+					if cand.Kind != "pon" {
+						t.Fatalf("action 5 kind %q", cand.Kind)
+					}
+				case 6:
+					if cand.Kind != "kan" {
+						t.Fatalf("action 6 kind %q", cand.Kind)
+					}
+				case 7:
+					if cand.Kind != "win" {
+						t.Fatalf("action 7 kind %q", cand.Kind)
+					}
+				}
+			}
+		}
+	}
+	if a := byAction[1].Maka.Candidates[0]; a.Kind != "discard" {
+		t.Fatalf("discard kind %q", a.Kind)
+	}
+	if c := byAction[5].Maka.Candidates[0]; c.Kind != "riichi_discard" {
+		t.Fatalf("riichi kind %q", c.Kind)
+	}
 	kinds := map[string]int{}
 	seats := map[string][]int{}
 	for _, s := range r.SeerSideEvals {

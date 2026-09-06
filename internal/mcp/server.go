@@ -36,9 +36,10 @@ func Handler(gamesDir, version, token string) http.Handler {
 	})
 }
 
-// New builds the MCP server with the three read-only tools.
+// New builds the MCP server with the three read-only tools and
+// interpretation instructions for connecting clients.
 func New(gamesDir, version string) *sdk.Server {
-	s := sdk.NewServer(&sdk.Implementation{Name: "mjcap", Version: version}, nil)
+	s := sdk.NewServer(&sdk.Implementation{Name: "mjcap", Version: version}, &sdk.ServerOptions{Instructions: serverInstructions})
 	h := handlers{dir: gamesDir}
 	sdk.AddTool(s, &sdk.Tool{
 		Name:        "list_games",
@@ -50,7 +51,7 @@ func New(gamesDir, version string) *sdk.Server {
 	}, h.getRound)
 	sdk.AddTool(s, &sdk.Tool{
 		Name:        "find_mistakes",
-		Description: "Return discard decisions whose MAKA score_delta_vs_best is at least the threshold (default 10; 0 = best choice). The stored data does not identify which seat is the user, so seat is required.",
+		Description: "Return discard decisions whose MAKA score_delta_vs_best is at least the threshold (default 10; 0 = best choice). seat defaults to the stored self_seat when the capture allowed detecting it; otherwise seat must be given.",
 	}, h.findMistakes)
 	return s
 }
@@ -64,11 +65,14 @@ type ListGamesInput struct {
 type GameSummary struct {
 	GameUUID    string            `json:"game_uuid"`
 	CapturedAt  time.Time         `json:"captured_at"`
+	StartTime   uint64            `json:"start_time,omitempty"`
+	EndTime     uint64            `json:"end_time,omitempty"`
 	Seats       int               `json:"seats"`
 	Rounds      int               `json:"rounds"`
 	Mode        *extract.GameMode `json:"mode,omitempty"`
 	FinalScores []int64           `json:"final_scores,omitempty"`
 	MakaJoined  bool              `json:"maka_joined"`
+	SelfSeat    *int              `json:"self_seat,omitempty"`
 	Issues      int               `json:"issues"`
 	Note        string            `json:"note,omitempty"`
 }
@@ -88,6 +92,15 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 	if err != nil {
 		return nil, ListGamesOutput{}, err
 	}
+	// Order by when the game was played (record head start_time) when known;
+	// files without it fall back to capture time via the store ordering.
+	sort.SliceStable(files, func(i, j int) bool {
+		a, b := files[i].Game.StartTime, files[j].Game.StartTime
+		if a != 0 && b != 0 {
+			return a > b
+		}
+		return false
+	})
 	out := make([]GameSummary, 0, len(files))
 	for _, f := range files {
 		if len(out) >= limit {
@@ -104,11 +117,14 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 		out = append(out, GameSummary{
 			GameUUID:    f.Game.UUID,
 			CapturedAt:  f.CapturedAt,
+			StartTime:   f.Game.StartTime,
+			EndTime:     f.Game.EndTime,
 			Seats:       f.Game.Seats,
 			Rounds:      len(f.Game.Rounds),
 			Mode:        f.Game.Mode,
 			FinalScores: finals,
 			MakaJoined:  f.Game.MakaUUID != "",
+			SelfSeat:    f.Game.SelfSeat,
 			Issues:      issues,
 			Note:        "seat identity of the user is not stored; the overall MAKA rank shown by the client has no measured source yet",
 		})
@@ -142,7 +158,7 @@ func (h handlers) getRound(_ context.Context, _ *sdk.CallToolRequest, in GetRoun
 type FindMistakesInput struct {
 	GameUUID  string `json:"game_uuid"`
 	Threshold *int64 `json:"threshold,omitempty" jsonschema:"minimum score_delta_vs_best to report; default 10"`
-	Seat      *int   `json:"seat,omitempty" jsonschema:"seat to inspect (0-3). Required: the stored data does not record which seat is the user"`
+	Seat      *int   `json:"seat,omitempty" jsonschema:"seat to inspect (0-3); defaults to the stored self_seat when available"`
 }
 
 type Mistake struct {
@@ -175,9 +191,6 @@ type FindMistakesOutput struct {
 }
 
 func (h handlers) findMistakes(_ context.Context, _ *sdk.CallToolRequest, in FindMistakesInput) (*sdk.CallToolResult, FindMistakesOutput, error) {
-	if in.Seat == nil {
-		return nil, FindMistakesOutput{}, fmt.Errorf("seat is required: the stored reconstruction does not identify which seat is the user, and guessing seat 0 would report someone else's play")
-	}
 	threshold := int64(10)
 	if in.Threshold != nil {
 		threshold = *in.Threshold
@@ -185,6 +198,12 @@ func (h handlers) findMistakes(_ context.Context, _ *sdk.CallToolRequest, in Fin
 	f, err := store.LoadByUUID(h.dir, in.GameUUID)
 	if err != nil {
 		return nil, FindMistakesOutput{}, err
+	}
+	if in.Seat == nil {
+		in.Seat = f.Game.SelfSeat
+	}
+	if in.Seat == nil {
+		return nil, FindMistakesOutput{}, fmt.Errorf("seat is required: this stored game does not record which seat is the user, and guessing seat 0 would report someone else's play")
 	}
 	if *in.Seat < 0 || *in.Seat >= f.Game.Seats {
 		return nil, FindMistakesOutput{}, fmt.Errorf("seat %d outside 0..%d", *in.Seat, f.Game.Seats-1)

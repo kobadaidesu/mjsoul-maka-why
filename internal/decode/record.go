@@ -260,6 +260,13 @@ func MessagesField(m protoreflect.Message, name string) ([]protoreflect.Message,
 	return out, nil
 }
 
+// HasField reports explicit presence, which matters for message fields whose
+// zero value is indistinguishable from absence via Get.
+func HasField(m protoreflect.Message, name string) bool {
+	fd := m.Descriptor().Fields().ByName(protoreflect.Name(name))
+	return fd != nil && m.Has(fd)
+}
+
 func MessageField(m protoreflect.Message, name string) (protoreflect.Message, error) {
 	fd, err := field(m, name)
 	if err != nil {

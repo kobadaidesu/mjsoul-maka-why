@@ -66,6 +66,9 @@ func build(t *testing.T, reg *liqi.Registry, name string, fields map[string]any)
 			for _, n := range v {
 				list.Append(protoreflect.ValueOfUint32(n))
 			}
+		case map[string]any:
+			sub := build(t, reg, "."+string(fd.Message().FullName()), v)
+			m.Set(fd, protoreflect.ValueOfMessage(sub.Message))
 		case []map[string]any:
 			list := m.Mutable(fd).List()
 			for _, child := range v {
@@ -113,9 +116,12 @@ func TestRoundsReconstruction(t *testing.T) {
 		build(t, reg, ".lq.RecordDiscardTile", map[string]any{"seat": 3, "tile": "9m"}),
 		build(t, reg, ".lq.RecordDealTile", map[string]any{"seat": 0, "tile": "5z"}),
 		build(t, reg, ".lq.RecordAnGangAddGang", map[string]any{"seat": 0, "tiles": "5z", "doras": []string{"4p", "8s"}}),
-		build(t, reg, ".lq.RecordDealTile", map[string]any{"seat": 0, "tile": "9p"}),
+		build(t, reg, ".lq.RecordDealTile", map[string]any{"seat": 0, "tile": "9p", "left_tile_count": 55}),
 		build(t, reg, ".lq.RecordDiscardTile", map[string]any{"seat": 0, "tile": "1m", "is_liqi": true}),
-		build(t, reg, ".lq.RecordHule", map[string]any{"scores": []int32{26000, 27000, 24000, 23000}}),
+		build(t, reg, ".lq.RecordDealTile", map[string]any{"seat": 1, "tile": "7z", "left_tile_count": 54,
+			"liqi": map[string]any{"seat": 0, "score": 24000, "liqibang": 1}}),
+		build(t, reg, ".lq.RecordDiscardTile", map[string]any{"seat": 1, "tile": "7z", "moqie": true}),
+		build(t, reg, ".lq.RecordHule", map[string]any{"old_scores": []int32{24000, 25000, 25000, 25000}, "scores": []int32{26000, 27000, 24000, 23000}}),
 	}
 	for i := range actions {
 		actions[i].Index = i
@@ -140,7 +146,7 @@ func TestRoundsReconstruction(t *testing.T) {
 	if !reflect.DeepEqual(r.DoraIndicators, []string{"4p", "8s"}) {
 		t.Fatalf("kan dora not applied: %v", r.DoraIndicators)
 	}
-	if len(r.Decisions) != 4 {
+	if len(r.Decisions) != 5 {
 		t.Fatalf("decisions %+v", r.Decisions)
 	}
 	dealer := r.Decisions[0]
@@ -160,8 +166,33 @@ func TestRoundsReconstruction(t *testing.T) {
 	if riichi.Seat != 0 || !riichi.Riichi || riichi.Draw != "9p" || len(riichi.HandBefore) != 11 {
 		t.Fatalf("riichi decision %+v", riichi)
 	}
+	// int32 int64 sanity for LiQiSuccess score handled via IntField.
 	if !sortedStrings(riichi.HandBefore) {
 		t.Fatalf("hand snapshot not sorted: %v", riichi.HandBefore)
+	}
+	// Board before the riichi discard: three rivers filled, the chi and the
+	// closed kan visible as melds, no riichi accepted yet.
+	rb := riichi.Board
+	if rb == nil || rb.TilesLeft != 55 || rb.RiichiSticks != 0 || rb.RiichiDeclared[0] {
+		t.Fatalf("riichi board %+v", rb)
+	}
+	if len(rb.Rivers[1]) != 1 || rb.Rivers[1][0] != "9s" || len(rb.Rivers[3]) != 1 || rb.Rivers[3][0] != "9m" {
+		t.Fatalf("rivers %+v", rb.Rivers)
+	}
+	if len(rb.Melds[3]) != 1 || len(rb.Melds[3][0].Froms) != 3 || len(rb.Melds[0]) != 1 || !rb.Melds[0][0].Kan || len(rb.Melds[0][0].Tiles) != 4 {
+		t.Fatalf("melds %+v", rb.Melds)
+	}
+	if !reflect.DeepEqual(rb.DoraIndicators, []string{"4p", "8s"}) || !reflect.DeepEqual(rb.Scores, []int64{25000, 25000, 25000, 25000}) {
+		t.Fatalf("board dora/scores %+v", rb)
+	}
+	// After the accepted riichi (LiQiSuccess on the next draw), the following
+	// decision sees the stick and the deducted score.
+	after := r.Decisions[4]
+	if after.Seat != 1 || after.Board.RiichiSticks != 1 || after.Board.Scores[0] != 24000 || !after.Board.RiichiDeclared[0] || after.Board.TilesLeft != 54 {
+		t.Fatalf("post-riichi board %+v", after.Board)
+	}
+	if len(after.Board.Rivers[0]) != 1 || after.Board.Rivers[0][0] != "1m" {
+		t.Fatalf("post-riichi river %+v", after.Board.Rivers)
 	}
 }
 

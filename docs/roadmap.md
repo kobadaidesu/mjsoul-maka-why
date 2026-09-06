@@ -29,7 +29,9 @@ capture (CDP観測, internal/capture)
 - `--liqi-meta` / `--protocol` は省略時に自動探索: `.cache/mjcap/liqi/*.meta.json` と `.cache/mjcap/protocol/*.json` がそれぞれ**ちょうど 1 個**ならそれを使い、複数あれば明示指定を要求（推測選択はしない）。
 - 受け入れ: 実 Chrome で牌譜を開いて 1 コマンドで data/games/ に保存されること。既存テストが緑のまま。
 
-### ② 自席（self_seat）の自動判定 — branch `feature/self-seat`（未着手）
+### ② 自席（self_seat）の自動判定 — branch `feature/self-seat`
+
+状態: **実装完了・PR待ち**（実 capture で self_seat=2 を検出、UI 検証済みの席と一致。ログイン通信の無い capture では従来どおり seat 必須）
 
 - 目的: `find_mistakes` の seat 指定を省略可能にする。
 - 設計: capture 内のログイン応答（`.lq.Lobby.oauth2Login` の応答 `.lq.ResLogin`。field は decode 時に descriptor から解決）から自分の account_id を**メモリ上でのみ**取得し、`RecordGame.head.accounts[].{account_id, seat}` と照合して **seat 番号だけ**を `Game.SelfSeat` に保存する。account_id・nickname は保存もログもしない（憲法 §25/§45）。
@@ -37,7 +39,9 @@ capture (CDP観測, internal/capture)
 - `find_mistakes`: seat 省略時、stored SelfSeat があればそれを使用（憲法 §29 の仕様どおり）。無ければ従来の明示エラー。
 - 注意: ResLogin の account_id field 名は実測（capture 2 のリロードログイン応答）で確認してから使うこと。
 
-### ③ 盤面の完全復元 — branch `feature/board-state`（未着手）
+### ③ 盤面の完全復元 — branch `feature/board-state`
+
+状態: **実装完了・PR待ち**（LiQiSuccess の意味を実測で確定し、実牌譜 10 局で old_scores 照合 10/10・供託/残り牌数の整合を確認。findings #board-state 参照）
 
 - 目的: 各決断に「河・副露・各家のリーチ状態・残り牌数・供託」を付け、LLM 解説を具体化する。
 - 設計: extract の再生ループは既に全イベントを舐めているので、状態を広げるだけ。
@@ -48,12 +52,22 @@ capture (CDP観測, internal/capture)
 - 検証: 実 capture で「河の合計 + 手牌 + 副露 + 王牌」が矛盾しないこと、リーチ棒と点数連続性の整合。
 - schema: 追加 field のみ（破壊的変更なしなので schema_version は 1 のまま。§28）。
 
-### ④ 鳴き行動値の実測 — branch `feature/call-actions`（未着手）
+### ④ 鳴き行動値の実測 — branch `feature/call-actions`
+
+状態: **実装完了・PR待ち**（2=チー下/3=チー中/4=チー上/5=ポン/6=カン を実行18/18・フィージビリティ86/86で確定。findings #call-actions 参照。SeerCandidate.kind として出力）
 
 - 目的: SeerPrediction.action の 2/3/4/5 を確定し、鳴き機会の分析を可能にする。
 - 仮説（未確定・要実測）: 1=見送り(確定済), 5=ポン(1例確認), 6=カン(1例確認), 7=和了(確定済) から類推して 2/3/4=チーの 3 変化（喰い位置）ではないか。
 - 実測方法: capture 1 の 18 件の実際の副露（RecordChiPengGang: type0=順子形/type1=刻子形）と、直前の call_opportunity イベントの候補 action を突合。チーの喰い位置（取った牌が順子の下/中/上）と action 値の対応を全件で検証する。
 - 全件矛盾なしなら CONFIRMED として findings に記録し、`tileFromSeerAction` 同様の変換で SeerCandidate に kind ラベルを付与。矛盾が残る値は raw のまま。
+
+### ⑤ プロンプト整備 — branch `feature/prompting`
+
+状態: **実装完了・PR待ち**
+
+- MCP server `instructions` のみ（接続時に全クライアントへ渡る解釈ガイド: 牌表記、score の読み方と未検証の注意、delta 不明≠0、河は鳴かれ牌も保持、kind 一覧、推奨フロー）。
+- prompt テンプレート（analyze_game）は一度実装したが、素の依頼で同等の分析が出るためユーザー判断で削除。再追加するなら価値を再確認してから。
+- 記載内容は実測済み事実と「未検証」の明示のみで構成し、findings と矛盾させないこと。
 
 ## 完了済み機能の落ち穂（優先度低・未着手）
 
