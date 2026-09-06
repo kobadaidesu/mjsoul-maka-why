@@ -73,14 +73,20 @@ type GameSummary struct {
 	Note        string            `json:"note,omitempty"`
 }
 
-func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGamesInput) (*sdk.CallToolResult, []GameSummary, error) {
+// ListGamesOutput wraps the summaries in an object because MCP clients such
+// as Claude Code require tool output schemas of type "object".
+type ListGamesOutput struct {
+	Games []GameSummary `json:"games"`
+}
+
+func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGamesInput) (*sdk.CallToolResult, ListGamesOutput, error) {
 	limit := in.Limit
 	if limit <= 0 {
 		limit = 20
 	}
 	files, err := store.List(h.dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, ListGamesOutput{}, err
 	}
 	out := make([]GameSummary, 0, len(files))
 	for _, f := range files {
@@ -107,7 +113,7 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 			Note:        "seat identity of the user is not stored; the overall MAKA rank shown by the client has no measured source yet",
 		})
 	}
-	return nil, out, nil
+	return nil, ListGamesOutput{Games: out}, nil
 }
 
 type GetRoundInput struct {

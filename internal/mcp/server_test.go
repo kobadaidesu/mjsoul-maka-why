@@ -116,9 +116,9 @@ func TestHTTPHandlerRequiresToken(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatalf("http list_games: %v %+v", err, res)
 	}
-	var list []GameSummary
+	var list ListGamesOutput
 	raw, _ := json.Marshal(res.StructuredContent)
-	if err := json.Unmarshal(raw, &list); err != nil || len(list) != 1 || list[0].GameUUID != "synthetic-uuid-mcp" {
+	if err := json.Unmarshal(raw, &list); err != nil || len(list.Games) != 1 || list.Games[0].GameUUID != "synthetic-uuid-mcp" {
 		t.Fatalf("http list_games output: %v %+v", err, list)
 	}
 }
@@ -130,11 +130,11 @@ func TestMCPToolsServeStoredGames(t *testing.T) {
 	}
 	cs := session(t, dir)
 
-	var list []GameSummary
+	var list ListGamesOutput
 	if msg := call(t, cs, "list_games", map[string]any{}, &list); msg != "" {
 		t.Fatal(msg)
 	}
-	if len(list) != 1 || list[0].GameUUID != "synthetic-uuid-mcp" || !list[0].MakaJoined || list[0].FinalScores[0] != 26000 {
+	if len(list.Games) != 1 || list.Games[0].GameUUID != "synthetic-uuid-mcp" || !list.Games[0].MakaJoined || list.Games[0].FinalScores[0] != 26000 {
 		t.Fatalf("list_games %+v", list)
 	}
 
