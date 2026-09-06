@@ -173,6 +173,12 @@ func runDecode(args []string, stderr io.Writer) int {
 			return fmt.Errorf("seq %d: %w", e.Seq, err)
 		}
 		game.Mode = gameMode(head)
+		if v, err := decode.UintField(head, "start_time"); err == nil {
+			game.StartTime = v
+		}
+		if v, err := decode.UintField(head, "end_time"); err == nil {
+			game.EndTime = v
+		}
 		pending = append(pending, pendingGame{game: game, detail: detail, head: head, seq: e.Seq, capturedAt: e.CapturedAt})
 		return nil
 	})

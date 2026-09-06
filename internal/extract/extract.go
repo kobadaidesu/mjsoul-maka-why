@@ -61,6 +61,10 @@ type Game struct {
 	Version uint64    `json:"record_version"`
 	Seats   int       `json:"seats"`
 	Mode    *GameMode `json:"mode,omitempty"`
+	// StartTime/EndTime are the game's own unix-second stamps from the record
+	// head; they order games by when they were played, not when captured.
+	StartTime uint64 `json:"start_time,omitempty"`
+	EndTime   uint64 `json:"end_time,omitempty"`
 	// SelfSeat is the seat the capturing user played, when the capture allowed
 	// matching it (login traffic present). Only the seat number is kept.
 	SelfSeat *int     `json:"self_seat,omitempty"`

@@ -22,6 +22,10 @@ chi_mid, chi_high (position of the claimed tile in the run), pon, kan, win.
 Per-round maka_ratings are raw values whose grade mapping (letters shown by
 the client) is not yet measured.
 
+list_games orders by start_time (unix seconds, when the game was played);
+captured_at is only when it was ingested, so "the latest game" means the
+first entry / highest start_time.
+
 Suggested flow: list_games -> find_mistakes (seat defaults to the stored
 self_seat when available) -> get_round for the interesting hands, whose
 decisions carry board_before (scores, rivers, melds, riichi state, tiles
