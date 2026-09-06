@@ -149,3 +149,10 @@ Profile がポインタ field を持つため、capture binding の比較は str
 - mode は head.config の raw 値（category / mode / mode_id）のみ保存し、部屋名・長さへの変換は未実測のため行わない。UI「全体評価」も取得元未実測のため出力しない。
 - `find_mistakes` は `score_delta_vs_best >= threshold`（既定 10）を delta 降順で返す。実選択が候補外の決断は件数のみ報告し、順位付けしない。
 - 検証: 合成 store/mcp テスト（in-memory transport で 3 tool、seat 必須エラー、schema version 拒否、atomic 上書き）に加え、実牌譜を `--games-dir` で保存し、stdio の実プロセスに対して initialize → tools/list → 3 tool 呼び出し → EOF 正常終了を確認した。stdin EOF はクライアント切断として exit 0 とする。
+
+### HTTP モード（ユーザー要望による追加）
+
+web 版 LLM クライアントは stdio に接続できないため、`--listen` 指定時のみ streamable HTTP でも同じ read-only 3 tool を提供する（既定は従来どおり stdio）。
+外部公開のリスクは次で opt-in に限定する: (1) 既定で loopback 以外へのバインドを拒否（`--allow-nonlocal-listen` が必須）、(2) 全リクエストに URL 先頭セグメントの秘密トークン（初回起動時に `data/mcp-token` へ 0600 生成、Git 除外、定数時間比較、不一致は MCP 処理前に 404）。
+インターネット公開はユーザーがトンネルを自分で張った場合のみ発生し、その旨と失効手順（token ファイル削除）を README に明記した。静的 Bearer ヘッダを設定できないクライアント（ChatGPT connectors 等）でも使えるよう、ヘッダでなく secret-path 方式を選んだ。
+検証: httptest + SDK StreamableClientTransport の合成テスト（誤トークン 404、正トークンで list_games）と、実プロセスに対する curl での initialize 成功・誤トークン 404 を確認。

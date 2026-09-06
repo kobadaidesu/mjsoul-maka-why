@@ -3,6 +3,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,43 @@ func call(t *testing.T, cs *sdk.ClientSession, tool string, args map[string]any,
 		t.Fatalf("%s output: %v (%s)", tool, err, raw)
 	}
 	return ""
+}
+
+func TestHTTPHandlerRequiresToken(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := store.Save(dir, store.File{CapturedAt: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), Game: fixtureGame()}); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(Handler(dir, "test", "secret-token-secret-token-secret-token"))
+	defer ts.Close()
+
+	for _, path := range []string{"/mcp", "/wrong-token/mcp", "/"} {
+		resp, err := http.Post(ts.URL+path, "application/json", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("path %s: status %d", path, resp.StatusCode)
+		}
+	}
+
+	ctx := context.Background()
+	client := sdk.NewClient(&sdk.Implementation{Name: "test-client", Version: "0"}, nil)
+	cs, err := client.Connect(ctx, &sdk.StreamableClientTransport{Endpoint: ts.URL + "/secret-token-secret-token-secret-token/mcp"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	res, err := cs.CallTool(ctx, &sdk.CallToolParams{Name: "list_games", Arguments: map[string]any{}})
+	if err != nil || res.IsError {
+		t.Fatalf("http list_games: %v %+v", err, res)
+	}
+	var list []GameSummary
+	raw, _ := json.Marshal(res.StructuredContent)
+	if err := json.Unmarshal(raw, &list); err != nil || len(list) != 1 || list[0].GameUUID != "synthetic-uuid-mcp" {
+		t.Fatalf("http list_games output: %v %+v", err, list)
+	}
 }
 
 func TestMCPToolsServeStoredGames(t *testing.T) {

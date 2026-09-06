@@ -6,3 +6,4 @@ data/games/
 *.log
 privacy.key
 .DS_Store
+/data/mcp-token

@@ -5,8 +5,11 @@ package mcp
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
+	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"mjcap/internal/extract"
@@ -14,6 +17,24 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Handler serves the same read-only tools over streamable HTTP. Every request
+// must carry the secret token as its first path segment (…/{token}/…); the
+// comparison is constant-time and everything else is rejected before any MCP
+// processing happens. Exposure beyond loopback is the caller's decision.
+func Handler(gamesDir, version, token string) http.Handler {
+	inner := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return New(gamesDir, version) }, nil)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seg, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if token == "" || subtle.ConstantTimeCompare([]byte(seg), []byte(token)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/" + rest
+		inner.ServeHTTP(w, r2)
+	})
+}
 
 // New builds the MCP server with the three read-only tools.
 func New(gamesDir, version string) *sdk.Server {
