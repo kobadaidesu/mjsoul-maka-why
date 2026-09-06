@@ -142,6 +142,20 @@ stdio の read-only MCP server が起動し、以下の 3 tool を提供しま�
 
 server はゲーム・Chrome・ネットワークへ一切接続しません。実選択が MAKA 候補外だった決断は delta 不明として件数のみ報告します。
 
+### HTTP モード（リモートクライアント用）
+
+```sh
+./bin/mjcap mcp --games-dir data/games --listen 127.0.0.1:8930
+```
+
+streamable HTTP で同じ 3 tool を提供します。既定では loopback にのみバインドし（非 loopback は `--allow-nonlocal-listen` が必須）、全リクエストに秘密トークン（初回起動時に `data/mcp-token` へ 0600 で生成）を URL の先頭セグメントとして要求します:
+
+```text
+http://127.0.0.1:8930/<token>/mcp
+```
+
+トークン不一致は MCP 処理前に 404 で拒否します（定数時間比較）。web 版の LLM クライアント（ChatGPT 等）から使う場合は、この loopback URL の前に自分でトンネル（cloudflared 等）を張って公開します。**公開はユーザーの明示的な操作でのみ起き、トークン URL とトンネル URL を知る相手はあなたの牌譜データを読めます。**不要になったらトンネルを止め、`data/mcp-token` を削除すればトークンは再生成されます。
+
 ## ディレクトリと private data
 
 `cmd/mjcap` は配線、`internal/cli` は CLI とログ、`internal/liqi` は静的取得・cache・parser・descriptor の責務です。

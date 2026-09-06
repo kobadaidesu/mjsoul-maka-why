@@ -24,6 +24,8 @@ func TestArgumentsWithoutNetwork(t *testing.T) {
 		{[]string{"decode", "--liqi-meta=missing", "capture.jsonl"}, 2, "Usage:"},
 		{[]string{"mcp", "--help"}, 0, "games-dir"},
 		{[]string{"mcp", "unexpected"}, 2, "Usage:"},
+		{[]string{"mcp", "--listen=bad"}, 2, "invalid listen"},
+		{[]string{"mcp", "--listen=0.0.0.0:0"}, 2, "loopback"},
 		{[]string{"serve"}, 2, "available"},
 		{[]string{"fetch-proto", "--timeout=0"}, 2, "positive timeout"},
 		{[]string{"fetch-proto", "unexpected"}, 2, "positional"},

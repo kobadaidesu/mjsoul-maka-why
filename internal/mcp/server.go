@@ -5,8 +5,11 @@ package mcp
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
+	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"mjcap/internal/extract"
@@ -14,6 +17,24 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Handler serves the same read-only tools over streamable HTTP. Every request
+// must carry the secret token as its first path segment (…/{token}/…); the
+// comparison is constant-time and everything else is rejected before any MCP
+// processing happens. Exposure beyond loopback is the caller's decision.
+func Handler(gamesDir, version, token string) http.Handler {
+	inner := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return New(gamesDir, version) }, nil)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seg, rest, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if token == "" || subtle.ConstantTimeCompare([]byte(seg), []byte(token)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/" + rest
+		inner.ServeHTTP(w, r2)
+	})
+}
 
 // New builds the MCP server with the three read-only tools.
 func New(gamesDir, version string) *sdk.Server {
@@ -52,14 +73,20 @@ type GameSummary struct {
 	Note        string            `json:"note,omitempty"`
 }
 
-func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGamesInput) (*sdk.CallToolResult, []GameSummary, error) {
+// ListGamesOutput wraps the summaries in an object because MCP clients such
+// as Claude Code require tool output schemas of type "object".
+type ListGamesOutput struct {
+	Games []GameSummary `json:"games"`
+}
+
+func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGamesInput) (*sdk.CallToolResult, ListGamesOutput, error) {
 	limit := in.Limit
 	if limit <= 0 {
 		limit = 20
 	}
 	files, err := store.List(h.dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, ListGamesOutput{}, err
 	}
 	out := make([]GameSummary, 0, len(files))
 	for _, f := range files {
@@ -86,7 +113,7 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 			Note:        "seat identity of the user is not stored; the overall MAKA rank shown by the client has no measured source yet",
 		})
 	}
-	return nil, out, nil
+	return nil, ListGamesOutput{Games: out}, nil
 }
 
 type GetRoundInput struct {
