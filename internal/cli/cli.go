@@ -17,11 +17,14 @@ import (
 // Run owns CLI parsing/logging; main only wires process lifetime and streams.
 func Run(ctx context.Context, args []string, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprintln(stderr, "Usage: mjcap <fetch-proto|capture|inspect|decode|mcp> [flags]\nObserve existing Chrome traffic, decode captured game records, or serve stored games over MCP stdio.")
+		fmt.Fprintln(stderr, "Usage: mjcap <fetch-proto|capture|inspect|decode|ingest|mcp> [flags]\nObserve existing Chrome traffic, decode captured game records, or serve stored games over MCP stdio.")
 		return 0
 	}
 	if args[0] == "mcp" {
 		return runMCP(ctx, args[1:], stderr)
+	}
+	if args[0] == "ingest" {
+		return runIngest(ctx, args[1:], stderr)
 	}
 	if args[0] == "capture" {
 		return runCapture(ctx, args[1:], stderr)
@@ -33,7 +36,7 @@ func Run(ctx context.Context, args []string, stderr io.Writer) int {
 		return runDecode(args[1:], stderr)
 	}
 	if args[0] != "fetch-proto" {
-		fmt.Fprintln(stderr, "Unknown subcommand; available: fetch-proto, capture, inspect, decode, mcp.")
+		fmt.Fprintln(stderr, "Unknown subcommand; available: fetch-proto, capture, inspect, decode, ingest, mcp.")
 		return 2
 	}
 	fs := flag.NewFlagSet("fetch-proto", flag.ContinueOnError)

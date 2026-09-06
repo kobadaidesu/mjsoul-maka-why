@@ -18,3 +18,5 @@
 - 依存理由・設計判断は docs/decisions.md。既存変更の reset / revert、raw データの commit は禁止。
 
 Phase 完了報告は変更、確認、実測、未確認、TODO(verify)、主要ファイル、Acceptance Criteria を含め、次 Phase 未着手を明示する。
+
+Phase 0–4 は完了済み。進行中の改善作業と引き継ぎ手順は docs/roadmap.md を参照し、完了時に同ファイルの状態を更新する。
