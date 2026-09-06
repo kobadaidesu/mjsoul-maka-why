@@ -211,3 +211,11 @@ func TestFindMistakesUsesStoredSelfSeat(t *testing.T) {
 		t.Fatalf("self_seat missing from summary: %+v", list.Games[0])
 	}
 }
+
+func TestInstructionsForClients(t *testing.T) {
+	cs := session(t, t.TempDir())
+	res := cs.InitializeResult()
+	if res == nil || !strings.Contains(res.Instructions, "score_delta_vs_best") || !strings.Contains(res.Instructions, "Rivers keep tiles") {
+		t.Fatalf("instructions missing: %+v", res)
+	}
+}

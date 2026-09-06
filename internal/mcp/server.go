@@ -36,9 +36,10 @@ func Handler(gamesDir, version, token string) http.Handler {
 	})
 }
 
-// New builds the MCP server with the three read-only tools.
+// New builds the MCP server with the three read-only tools and
+// interpretation instructions for connecting clients.
 func New(gamesDir, version string) *sdk.Server {
-	s := sdk.NewServer(&sdk.Implementation{Name: "mjcap", Version: version}, nil)
+	s := sdk.NewServer(&sdk.Implementation{Name: "mjcap", Version: version}, &sdk.ServerOptions{Instructions: serverInstructions})
 	h := handlers{dir: gamesDir}
 	sdk.AddTool(s, &sdk.Tool{
 		Name:        "list_games",
