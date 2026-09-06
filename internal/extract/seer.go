@@ -26,12 +26,28 @@ const (
 )
 
 // SeerCandidate is one MAKA prediction. Tile stays empty when the action
-// value is outside the measured discard/riichi ranges.
+// value is outside the measured discard/riichi ranges; Kind stays empty for
+// action values whose meaning has not been measured.
 type SeerCandidate struct {
 	Action int64  `json:"action"`
 	Score  int64  `json:"score"`
 	Tile   string `json:"tile,omitempty"`
 	Riichi bool   `json:"riichi,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+}
+
+// Measured call/decision action values
+// (docs/protocol-findings.md#call-actions): every executed call of the
+// captured game matched these, and every prediction carrying them was
+// feasible against the reconstructed hand (86/86).
+var seerActionKinds = map[int64]string{
+	1: "pass",
+	2: "chi_low",
+	3: "chi_mid",
+	4: "chi_high",
+	5: "pon",
+	6: "kan",
+	7: "win",
 }
 
 // MakaEval attaches the MAKA candidates for one discard decision. Scores were
@@ -262,7 +278,14 @@ func seerCandidates(recommend protoreflect.Message) ([]SeerCandidate, error) {
 			return nil, err
 		}
 		tile, riichi := tileFromSeerAction(action)
-		out = append(out, SeerCandidate{Action: action, Score: score, Tile: tile, Riichi: riichi})
+		kind := seerActionKinds[action]
+		if tile != "" {
+			kind = "discard"
+			if riichi {
+				kind = "riichi_discard"
+			}
+		}
+		out = append(out, SeerCandidate{Action: action, Score: score, Tile: tile, Riichi: riichi, Kind: kind})
 	}
 	return out, nil
 }
