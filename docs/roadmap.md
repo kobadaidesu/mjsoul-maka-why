@@ -61,6 +61,14 @@ capture (CDP観測, internal/capture)
 - 実測方法: capture 1 の 18 件の実際の副露（RecordChiPengGang: type0=順子形/type1=刻子形）と、直前の call_opportunity イベントの候補 action を突合。チーの喰い位置（取った牌が順子の下/中/上）と action 値の対応を全件で検証する。
 - 全件矛盾なしなら CONFIRMED として findings に記録し、`tileFromSeerAction` 同様の変換で SeerCandidate に kind ラベルを付与。矛盾が残る値は raw のまま。
 
+### ⑤ プロンプト整備 — branch `feature/prompting`
+
+状態: **実装完了・PR待ち**
+
+- MCP server `instructions`（接続時に全クライアントへ渡る解釈ガイド: 牌表記、score の読み方と未検証の注意、kind 一覧、推奨フロー）。
+- MCP prompt `analyze_game`（引数 game_uuid / seat とも省略可の定型分析依頼。クライアントの prompt メニューから利用可能）。
+- 記載内容は実測済み事実と「未検証」の明示のみで構成し、findings と矛盾させないこと。
+
 ## 完了済み機能の落ち穂（優先度低・未着手）
 
 - NOTIFY(0x01) の実測 → envelope profile の notify 補完（ロビー通知が来るキャプチャ待ち）。
