@@ -65,8 +65,8 @@ capture (CDP観測, internal/capture)
 
 状態: **実装完了・PR待ち**
 
-- MCP server `instructions`（接続時に全クライアントへ渡る解釈ガイド: 牌表記、score の読み方と未検証の注意、kind 一覧、推奨フロー）。
-- MCP prompt `analyze_game`（引数 game_uuid / seat とも省略可の定型分析依頼。クライアントの prompt メニューから利用可能）。
+- MCP server `instructions` のみ（接続時に全クライアントへ渡る解釈ガイド: 牌表記、score の読み方と未検証の注意、delta 不明≠0、河は鳴かれ牌も保持、kind 一覧、推奨フロー）。
+- prompt テンプレート（analyze_game）は一度実装したが、素の依頼で同等の分析が出るためユーザー判断で削除。再追加するなら価値を再確認してから。
 - 記載内容は実測済み事実と「未検証」の明示のみで構成し、findings と矛盾させないこと。
 
 ## 完了済み機能の落ち穂（優先度低・未着手）

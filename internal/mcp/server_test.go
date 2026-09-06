@@ -212,24 +212,10 @@ func TestFindMistakesUsesStoredSelfSeat(t *testing.T) {
 	}
 }
 
-func TestAnalyzePromptAndInstructions(t *testing.T) {
+func TestInstructionsForClients(t *testing.T) {
 	cs := session(t, t.TempDir())
-	ctx := context.Background()
-	prompts, err := cs.ListPrompts(ctx, nil)
-	if err != nil || len(prompts.Prompts) != 1 || prompts.Prompts[0].Name != "analyze_game" {
-		t.Fatalf("prompts: %v %+v", err, prompts)
-	}
-	got, err := cs.GetPrompt(ctx, &sdk.GetPromptParams{Name: "analyze_game", Arguments: map[string]string{"game_uuid": "synthetic-uuid-mcp", "seat": "2"}})
-	if err != nil || len(got.Messages) != 1 {
-		t.Fatalf("get prompt: %v %+v", err, got)
-	}
-	text := got.Messages[0].Content.(*sdk.TextContent).Text
-	for _, want := range []string{"synthetic-uuid-mcp", "seat 2", "find_mistakes", "board_before"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("prompt text lacks %q", want)
-		}
-	}
-	if res := cs.InitializeResult(); res == nil || !strings.Contains(res.Instructions, "score_delta_vs_best") {
+	res := cs.InitializeResult()
+	if res == nil || !strings.Contains(res.Instructions, "score_delta_vs_best") || !strings.Contains(res.Instructions, "Rivers keep tiles") {
 		t.Fatalf("instructions missing: %+v", res)
 	}
 }
