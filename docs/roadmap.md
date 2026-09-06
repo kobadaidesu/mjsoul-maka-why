@@ -22,7 +22,7 @@ capture (CDP観測, internal/capture)
 
 ### ① ingest ワンコマンド取り込み — branch `feature/ingest`
 
-状態: **着手中**
+状態: **実装完了・PR待ち**（実機で attach→capture→decode 連結を確認。実牌譜での保存確認は次回の取り込み時）
 
 - 目的: 「Chrome 起動 → capture → decode --games-dir」の 3 手順を `mjcap ingest` 1 コマンドにする。
 - 設計: capture と同じ attach → `ingest ready` 表示 → ユーザーが牌譜 + MAKA を手動で開く → Ctrl-C → その capture を即 decode して store へ。既存の capture/decode 実装を配線するだけで新しいプロトコル知識は持たない。

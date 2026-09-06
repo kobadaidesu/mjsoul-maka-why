@@ -112,6 +112,17 @@ HTTP は metadata → loadingFinished → getResponseBody の順に処理し、�
 `--body-url-regexp` で body を保持する観測 URL を追加できます。URL への独自 GET は行いません。
 上限と制約、name ログの evidence profile については実測手順を参照してください。
 
+## ワンコマンド取り込み（ingest）
+
+専用 Chrome でゲームを開いた状態で:
+
+```sh
+./bin/mjcap ingest
+```
+
+capture に attach したら、牌譜を開いて MAKA を表示（複数の牌譜を続けて開いて良い）し、終わったら Ctrl-C。capture がそのまま decode され `data/games/` に保存されます。
+`--liqi-meta` / `--protocol` は `.cache/mjcap/liqi/` と `.cache/mjcap/protocol/` にファイルがちょうど 1 つずつあれば自動選択し、複数あるときは明示指定を要求します（推測で選ばない）。
+
 ## Phase 2 の decode
 
 capture 済み JSONL から牌譜応答を再構築します。実測済み envelope profile と exact liqi の指定が必須です。
