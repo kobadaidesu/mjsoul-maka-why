@@ -42,12 +42,41 @@ func gameMode(head protoreflect.Message) *extract.GameMode {
 	return mode
 }
 
-// Measured 2026-09-05: opening a replay sent fetchGameRecord and showing MAKA
-// sent fetchSeerReport (docs/protocol-findings.md#phase1-live-capture).
+// Measured 2026-09-05: opening a replay sent fetchGameRecord, showing MAKA
+// sent fetchSeerReport, and the login sequence answered oauth2Login with
+// ResLogin carrying the user's account_id
+// (docs/protocol-findings.md#phase1-live-capture, #phase1-reload-capture).
 const (
 	fetchGameRecordMethod = ".lq.Lobby.fetchGameRecord"
 	fetchSeerReportMethod = ".lq.Lobby.fetchSeerReport"
+	oauth2LoginMethod     = ".lq.Lobby.oauth2Login"
 )
+
+// selfSeatFromHead matches the logged-in account against the record's seat
+// table and returns only the seat number. The account identifiers stay in
+// memory; they are never stored or logged (AGENTS.md privacy rules).
+func selfSeatFromHead(head protoreflect.Message, accountID uint64) *int {
+	if accountID == 0 {
+		return nil
+	}
+	accounts, err := decode.MessagesField(head, "accounts")
+	if err != nil {
+		return nil
+	}
+	for _, acc := range accounts {
+		id, err := decode.UintField(acc, "account_id")
+		if err != nil || id != accountID {
+			continue
+		}
+		seat, err := decode.UintField(acc, "seat")
+		if err != nil {
+			return nil
+		}
+		s := int(seat)
+		return &s
+	}
+	return nil
+}
 
 func runDecode(args []string, stderr io.Writer) int {
 	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
@@ -86,11 +115,13 @@ func runDecode(args []string, stderr io.Writer) int {
 	type pendingGame struct {
 		game       extract.Game
 		detail     decode.GameDetail
+		head       protoreflect.Message
 		seq        uint64
 		capturedAt time.Time
 	}
 	var pending []pendingGame
 	reports := map[string]protoreflect.Message{}
+	var accountID uint64
 	replayErr := capture.Replay(f, func(e capture.Event) error {
 		if err := checkCaptureBinding(e, n, meta); err != nil {
 			return err
@@ -100,6 +131,11 @@ func runDecode(args []string, stderr io.Writer) int {
 			return nil
 		}
 		switch frame.Name {
+		case oauth2LoginMethod:
+			if id, err := decode.UintField(frame.Message, "account_id"); err == nil && id != 0 {
+				accountID = id
+			}
+			return nil
 		case fetchSeerReportMethod:
 			report, err := decode.MessageField(frame.Message, "report")
 			if err != nil {
@@ -137,7 +173,7 @@ func runDecode(args []string, stderr io.Writer) int {
 			return fmt.Errorf("seq %d: %w", e.Seq, err)
 		}
 		game.Mode = gameMode(head)
-		pending = append(pending, pendingGame{game: game, detail: detail, seq: e.Seq, capturedAt: e.CapturedAt})
+		pending = append(pending, pendingGame{game: game, detail: detail, head: head, seq: e.Seq, capturedAt: e.CapturedAt})
 		return nil
 	})
 	closeErr := f.Close()
@@ -151,6 +187,7 @@ func runDecode(args []string, stderr io.Writer) int {
 	}
 	var games []extract.Game
 	for _, p := range pending {
+		p.game.SelfSeat = selfSeatFromHead(p.head, accountID)
 		if report, ok := reports[p.game.UUID]; ok {
 			if err := extract.JoinSeer(&p.game, p.detail, report); err != nil {
 				logger.Error("join seer report", "seq", p.seq, "error", err)
@@ -167,7 +204,7 @@ func runDecode(args []string, stderr io.Writer) int {
 				}
 			}
 		}
-		logger.Info("game record reconstructed", "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "issues", issues, "record_version", p.game.Version)
+		logger.Info("game record reconstructed", "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "self_seat_known", p.game.SelfSeat != nil, "issues", issues, "record_version", p.game.Version)
 		if *gamesDir != "" {
 			path, err := store.Save(*gamesDir, store.File{CapturedAt: p.capturedAt, Game: p.game})
 			if err != nil {

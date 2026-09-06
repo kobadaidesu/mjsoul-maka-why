@@ -4,148 +4,359 @@
       "nested": {
         "Wrapper": {
           "fields": {
-            "name": { "type": "string", "id": 1 },
-            "data": { "type": "bytes", "id": 2 }
+            "name": {
+              "type": "string",
+              "id": 1
+            },
+            "data": {
+              "type": "bytes",
+              "id": 2
+            }
           }
         },
         "ReqGameRecord": {
           "fields": {
-            "game_uuid": { "type": "string", "id": 1 },
-            "client_version_string": { "type": "string", "id": 2 }
+            "game_uuid": {
+              "type": "string",
+              "id": 1
+            },
+            "client_version_string": {
+              "type": "string",
+              "id": 2
+            }
           }
         },
         "ResGameRecord": {
           "fields": {
-            "head": { "type": "RecordGame", "id": 3 },
-            "data": { "type": "bytes", "id": 4 },
-            "data_url": { "type": "string", "id": 5 }
+            "head": {
+              "type": "RecordGame",
+              "id": 3
+            },
+            "data": {
+              "type": "bytes",
+              "id": 4
+            },
+            "data_url": {
+              "type": "string",
+              "id": 5
+            }
           }
         },
         "RecordGame": {
           "fields": {
-            "uuid": { "type": "string", "id": 1 }
+            "uuid": {
+              "type": "string",
+              "id": 1
+            },
+            "accounts": {
+              "rule": "repeated",
+              "type": "AccountSeat",
+              "id": 11
+            }
           }
         },
         "GameDetailRecords": {
           "fields": {
-            "records": { "rule": "repeated", "type": "bytes", "id": 1 },
-            "version": { "type": "uint32", "id": 2 },
-            "actions": { "rule": "repeated", "type": "GameAction", "id": 3 }
+            "records": {
+              "rule": "repeated",
+              "type": "bytes",
+              "id": 1
+            },
+            "version": {
+              "type": "uint32",
+              "id": 2
+            },
+            "actions": {
+              "rule": "repeated",
+              "type": "GameAction",
+              "id": 3
+            }
           }
         },
         "GameAction": {
           "fields": {
-            "passed": { "type": "uint32", "id": 1 },
-            "type": { "type": "uint32", "id": 2 },
-            "result": { "type": "bytes", "id": 3 }
+            "passed": {
+              "type": "uint32",
+              "id": 1
+            },
+            "type": {
+              "type": "uint32",
+              "id": 2
+            },
+            "result": {
+              "type": "bytes",
+              "id": 3
+            }
           }
         },
         "RecordNewRound": {
           "fields": {
-            "chang": { "type": "uint32", "id": 1 },
-            "ju": { "type": "uint32", "id": 2 },
-            "ben": { "type": "uint32", "id": 3 },
-            "scores": { "rule": "repeated", "type": "int32", "id": 5 },
-            "tiles0": { "rule": "repeated", "type": "string", "id": 7 },
-            "tiles1": { "rule": "repeated", "type": "string", "id": 8 },
-            "tiles2": { "rule": "repeated", "type": "string", "id": 9 },
-            "tiles3": { "rule": "repeated", "type": "string", "id": 10 },
-            "doras": { "rule": "repeated", "type": "string", "id": 16 }
+            "chang": {
+              "type": "uint32",
+              "id": 1
+            },
+            "ju": {
+              "type": "uint32",
+              "id": 2
+            },
+            "ben": {
+              "type": "uint32",
+              "id": 3
+            },
+            "scores": {
+              "rule": "repeated",
+              "type": "int32",
+              "id": 5
+            },
+            "tiles0": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 7
+            },
+            "tiles1": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 8
+            },
+            "tiles2": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 9
+            },
+            "tiles3": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 10
+            },
+            "doras": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 16
+            }
           }
         },
         "RecordDealTile": {
           "fields": {
-            "seat": { "type": "uint32", "id": 1 },
-            "tile": { "type": "string", "id": 2 },
-            "doras": { "rule": "repeated", "type": "string", "id": 6 }
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "tile": {
+              "type": "string",
+              "id": 2
+            },
+            "doras": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 6
+            }
           }
         },
         "RecordDiscardTile": {
           "fields": {
-            "seat": { "type": "uint32", "id": 1 },
-            "tile": { "type": "string", "id": 2 },
-            "is_liqi": { "type": "bool", "id": 3 },
-            "moqie": { "type": "bool", "id": 5 },
-            "doras": { "rule": "repeated", "type": "string", "id": 8 },
-            "is_wliqi": { "type": "bool", "id": 9 }
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "tile": {
+              "type": "string",
+              "id": 2
+            },
+            "is_liqi": {
+              "type": "bool",
+              "id": 3
+            },
+            "moqie": {
+              "type": "bool",
+              "id": 5
+            },
+            "doras": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 8
+            },
+            "is_wliqi": {
+              "type": "bool",
+              "id": 9
+            }
           }
         },
         "RecordChiPengGang": {
           "fields": {
-            "seat": { "type": "uint32", "id": 1 },
-            "type": { "type": "uint32", "id": 2 },
-            "tiles": { "rule": "repeated", "type": "string", "id": 3 },
-            "froms": { "rule": "repeated", "type": "uint32", "id": 4 }
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "type": {
+              "type": "uint32",
+              "id": 2
+            },
+            "tiles": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 3
+            },
+            "froms": {
+              "rule": "repeated",
+              "type": "uint32",
+              "id": 4
+            }
           }
         },
         "RecordAnGangAddGang": {
           "fields": {
-            "seat": { "type": "uint32", "id": 1 },
-            "type": { "type": "uint32", "id": 2 },
-            "tiles": { "type": "string", "id": 3 },
-            "doras": { "rule": "repeated", "type": "string", "id": 6 }
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "type": {
+              "type": "uint32",
+              "id": 2
+            },
+            "tiles": {
+              "type": "string",
+              "id": 3
+            },
+            "doras": {
+              "rule": "repeated",
+              "type": "string",
+              "id": 6
+            }
           }
         },
         "RecordHule": {
           "fields": {
-            "hules": { "rule": "repeated", "type": "HuleInfo", "id": 1 },
-            "scores": { "rule": "repeated", "type": "int32", "id": 5 }
+            "hules": {
+              "rule": "repeated",
+              "type": "HuleInfo",
+              "id": 1
+            },
+            "scores": {
+              "rule": "repeated",
+              "type": "int32",
+              "id": 5
+            }
           }
         },
         "HuleInfo": {
           "fields": {
-            "seat": { "type": "uint32", "id": 4 },
-            "zimo": { "type": "bool", "id": 5 }
+            "seat": {
+              "type": "uint32",
+              "id": 4
+            },
+            "zimo": {
+              "type": "bool",
+              "id": 5
+            }
           }
         },
         "ReqFetchSeerReport": {
           "fields": {
-            "uuid": { "type": "string", "id": 1 }
+            "uuid": {
+              "type": "string",
+              "id": 1
+            }
           }
         },
         "ResFetchSeerReport": {
           "fields": {
-            "report": { "type": "SeerReport", "id": 2 }
+            "report": {
+              "type": "SeerReport",
+              "id": 2
+            }
           }
         },
         "SeerReport": {
           "fields": {
-            "uuid": { "type": "string", "id": 1 },
-            "events": { "rule": "repeated", "type": "SeerEvent", "id": 2 },
-            "rounds": { "rule": "repeated", "type": "SeerRound", "id": 3 }
+            "uuid": {
+              "type": "string",
+              "id": 1
+            },
+            "events": {
+              "rule": "repeated",
+              "type": "SeerEvent",
+              "id": 2
+            },
+            "rounds": {
+              "rule": "repeated",
+              "type": "SeerRound",
+              "id": 3
+            }
           }
         },
         "SeerEvent": {
           "fields": {
-            "record_index": { "type": "int32", "id": 1 },
-            "seer_index": { "type": "int32", "id": 2 },
-            "recommends": { "rule": "repeated", "type": "SeerRecommend", "id": 3 }
+            "record_index": {
+              "type": "int32",
+              "id": 1
+            },
+            "seer_index": {
+              "type": "int32",
+              "id": 2
+            },
+            "recommends": {
+              "rule": "repeated",
+              "type": "SeerRecommend",
+              "id": 3
+            }
           }
         },
         "SeerRecommend": {
           "fields": {
-            "seat": { "type": "int32", "id": 1 },
-            "predictions": { "rule": "repeated", "type": "SeerPrediction", "id": 2 }
+            "seat": {
+              "type": "int32",
+              "id": 1
+            },
+            "predictions": {
+              "rule": "repeated",
+              "type": "SeerPrediction",
+              "id": 2
+            }
           }
         },
         "SeerPrediction": {
           "fields": {
-            "action": { "type": "int32", "id": 1 },
-            "score": { "type": "int32", "id": 2 }
+            "action": {
+              "type": "int32",
+              "id": 1
+            },
+            "score": {
+              "type": "int32",
+              "id": 2
+            }
           }
         },
         "SeerRound": {
           "fields": {
-            "chang": { "type": "uint32", "id": 1 },
-            "ju": { "type": "uint32", "id": 2 },
-            "ben": { "type": "uint32", "id": 3 },
-            "player_scores": { "rule": "repeated", "type": "SeerScore", "id": 4 }
+            "chang": {
+              "type": "uint32",
+              "id": 1
+            },
+            "ju": {
+              "type": "uint32",
+              "id": 2
+            },
+            "ben": {
+              "type": "uint32",
+              "id": 3
+            },
+            "player_scores": {
+              "rule": "repeated",
+              "type": "SeerScore",
+              "id": 4
+            }
           }
         },
         "SeerScore": {
           "fields": {
-            "seat": { "type": "uint32", "id": 1 },
-            "rating": { "type": "uint32", "id": 2 }
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "rating": {
+              "type": "uint32",
+              "id": 2
+            }
           }
         },
         "RecordNoTile": {
@@ -153,9 +364,42 @@
         },
         "Lobby": {
           "methods": {
-            "fetchGameRecord": { "requestType": "ReqGameRecord", "responseType": "ResGameRecord" },
-            "fetchSeerReport": { "requestType": "ReqFetchSeerReport", "responseType": "ResFetchSeerReport" }
+            "fetchGameRecord": {
+              "requestType": "ReqGameRecord",
+              "responseType": "ResGameRecord"
+            },
+            "fetchSeerReport": {
+              "requestType": "ReqFetchSeerReport",
+              "responseType": "ResFetchSeerReport"
+            },
+            "oauth2Login": {
+              "requestType": "ReqOauth2Login",
+              "responseType": "ResLogin"
+            }
           }
+        },
+        "AccountSeat": {
+          "fields": {
+            "account_id": {
+              "type": "uint32",
+              "id": 1
+            },
+            "seat": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "ResLogin": {
+          "fields": {
+            "account_id": {
+              "type": "uint32",
+              "id": 2
+            }
+          }
+        },
+        "ReqOauth2Login": {
+          "fields": {}
         }
       }
     }

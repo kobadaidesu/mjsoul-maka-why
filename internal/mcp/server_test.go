@@ -166,7 +166,7 @@ func TestMCPToolsServeStoredGames(t *testing.T) {
 		t.Fatalf("find_mistakes threshold 0 %+v", mistakes)
 	}
 
-	// The user's seat is not stored: omitting seat must be an explicit error.
+	// Without a stored self_seat, omitting seat must stay an explicit error.
 	msg := call(t, cs, "find_mistakes", map[string]any{"game_uuid": "synthetic-uuid-mcp"}, &mistakes)
 	if !strings.Contains(msg, "seat is required") {
 		t.Fatalf("seatless call not rejected: %q", msg)
@@ -176,5 +176,38 @@ func TestMCPToolsServeStoredGames(t *testing.T) {
 	}
 	if msg := call(t, cs, "find_mistakes", map[string]any{"game_uuid": "no-such-game-uuid", "seat": 2}, &mistakes); msg == "" {
 		t.Fatal("unknown game accepted")
+	}
+}
+
+func TestFindMistakesUsesStoredSelfSeat(t *testing.T) {
+	dir := t.TempDir()
+	game := fixtureGame()
+	game.UUID, game.MakaUUID = "synthetic-uuid-self", "synthetic-uuid-self"
+	self := 2
+	game.SelfSeat = &self
+	if _, err := store.Save(dir, store.File{CapturedAt: time.Date(2026, 9, 6, 9, 0, 0, 0, time.UTC), Game: game}); err != nil {
+		t.Fatal(err)
+	}
+	cs := session(t, dir)
+	var mistakes FindMistakesOutput
+	if msg := call(t, cs, "find_mistakes", map[string]any{"game_uuid": "synthetic-uuid-self"}, &mistakes); msg != "" {
+		t.Fatal(msg)
+	}
+	if mistakes.Seat != 2 || len(mistakes.Mistakes) != 1 {
+		t.Fatalf("stored self_seat not used: %+v", mistakes)
+	}
+	// An explicit seat still overrides the stored default.
+	if msg := call(t, cs, "find_mistakes", map[string]any{"game_uuid": "synthetic-uuid-self", "seat": 1}, &mistakes); msg != "" {
+		t.Fatal(msg)
+	}
+	if mistakes.Seat != 1 {
+		t.Fatalf("explicit seat ignored: %+v", mistakes)
+	}
+	var list ListGamesOutput
+	if msg := call(t, cs, "list_games", map[string]any{}, &list); msg != "" {
+		t.Fatal(msg)
+	}
+	if list.Games[0].SelfSeat == nil || *list.Games[0].SelfSeat != 2 {
+		t.Fatalf("self_seat missing from summary: %+v", list.Games[0])
 	}
 }

@@ -56,13 +56,16 @@ type Decision struct {
 // Game is the Phase 2 reconstruction of one record. UUID identifies the game
 // record itself; it carries no player identity.
 type Game struct {
-	UUID     string    `json:"game_uuid"`
-	Version  uint64    `json:"record_version"`
-	Seats    int       `json:"seats"`
-	Mode     *GameMode `json:"mode,omitempty"`
-	MakaUUID string    `json:"maka_uuid,omitempty"`
-	Rounds   []Round   `json:"rounds"`
-	Issues   []string  `json:"issues,omitempty"`
+	UUID    string    `json:"game_uuid"`
+	Version uint64    `json:"record_version"`
+	Seats   int       `json:"seats"`
+	Mode    *GameMode `json:"mode,omitempty"`
+	// SelfSeat is the seat the capturing user played, when the capture allowed
+	// matching it (login traffic present). Only the seat number is kept.
+	SelfSeat *int     `json:"self_seat,omitempty"`
+	MakaUUID string   `json:"maka_uuid,omitempty"`
+	Rounds   []Round  `json:"rounds"`
+	Issues   []string `json:"issues,omitempty"`
 }
 
 // GameMode carries the raw mode identifiers from the record head. Their

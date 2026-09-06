@@ -29,7 +29,9 @@ capture (CDP観測, internal/capture)
 - `--liqi-meta` / `--protocol` は省略時に自動探索: `.cache/mjcap/liqi/*.meta.json` と `.cache/mjcap/protocol/*.json` がそれぞれ**ちょうど 1 個**ならそれを使い、複数あれば明示指定を要求（推測選択はしない）。
 - 受け入れ: 実 Chrome で牌譜を開いて 1 コマンドで data/games/ に保存されること。既存テストが緑のまま。
 
-### ② 自席（self_seat）の自動判定 — branch `feature/self-seat`（未着手）
+### ② 自席（self_seat）の自動判定 — branch `feature/self-seat`
+
+状態: **実装完了・PR待ち**（実 capture で self_seat=2 を検出、UI 検証済みの席と一致。ログイン通信の無い capture では従来どおり seat 必須）
 
 - 目的: `find_mistakes` の seat 指定を省略可能にする。
 - 設計: capture 内のログイン応答（`.lq.Lobby.oauth2Login` の応答 `.lq.ResLogin`。field は decode 時に descriptor から解決）から自分の account_id を**メモリ上でのみ**取得し、`RecordGame.head.accounts[].{account_id, seat}` と照合して **seat 番号だけ**を `Game.SelfSeat` に保存する。account_id・nickname は保存もログもしない（憲法 §25/§45）。

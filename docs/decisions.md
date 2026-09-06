@@ -156,3 +156,12 @@ web 版 LLM クライアントは stdio に接続できないため、`--listen`
 外部公開のリスクは次で opt-in に限定する: (1) 既定で loopback 以外へのバインドを拒否（`--allow-nonlocal-listen` が必須）、(2) 全リクエストに URL 先頭セグメントの秘密トークン（初回起動時に `data/mcp-token` へ 0600 生成、Git 除外、定数時間比較、不一致は MCP 処理前に 404）。
 インターネット公開はユーザーがトンネルを自分で張った場合のみ発生し、その旨と失効手順（token ファイル削除）を README に明記した。静的 Bearer ヘッダを設定できないクライアント（ChatGPT connectors 等）でも使えるよう、ヘッダでなく secret-path 方式を選んだ。
 検証: httptest + SDK StreamableClientTransport の合成テスト（誤トークン 404、正トークンで list_games）と、実プロセスに対する curl での initialize 成功・誤トークン 404 を確認。
+
+## 2026-09-06: 改善① ingest / 改善② self_seat（roadmap 参照）
+
+ユーザー承認により docs/roadmap.md の改善キューに着手。
+
+- `mjcap ingest`: 既存 capture → decode の配線のみ。evidence ファイルは cache に候補がちょうど 1 つのときだけ自動選択し、0/複数は明示エラー（推測選択しない）。サブコマンド追加の必要性はユーザー要望による。
+- self_seat: capture 内の `.lq.Lobby.oauth2Login` 応答（`ResLogin.account_id`、実測）と `RecordGame.accounts[].{account_id, seat}` をメモリ上で照合し、**seat 番号だけ**を `Game.SelfSeat` に保存する。account_id・nickname は保存もログもしない。照合できない capture では従来どおり省略。
+- `find_mistakes` は seat 省略時に stored self_seat を使い（憲法 §29 の仕様どおり）、無ければ従来の明示エラーを維持。明示 seat は常に優先。
+- 検証: 合成テスト（照合ヒット/ミス/ゼロ ID 拒否、MCP の default/override/エラー維持）に加え、リロード capture の再 decode で self_seat=2 を検出し、UI で確認済みの席と一致した。
