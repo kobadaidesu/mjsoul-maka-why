@@ -65,6 +65,8 @@ type ListGamesInput struct {
 type GameSummary struct {
 	GameUUID    string            `json:"game_uuid"`
 	CapturedAt  time.Time         `json:"captured_at"`
+	StartTime   uint64            `json:"start_time,omitempty"`
+	EndTime     uint64            `json:"end_time,omitempty"`
 	Seats       int               `json:"seats"`
 	Rounds      int               `json:"rounds"`
 	Mode        *extract.GameMode `json:"mode,omitempty"`
@@ -90,6 +92,15 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 	if err != nil {
 		return nil, ListGamesOutput{}, err
 	}
+	// Order by when the game was played (record head start_time) when known;
+	// files without it fall back to capture time via the store ordering.
+	sort.SliceStable(files, func(i, j int) bool {
+		a, b := files[i].Game.StartTime, files[j].Game.StartTime
+		if a != 0 && b != 0 {
+			return a > b
+		}
+		return false
+	})
 	out := make([]GameSummary, 0, len(files))
 	for _, f := range files {
 		if len(out) >= limit {
@@ -106,6 +117,8 @@ func (h handlers) listGames(_ context.Context, _ *sdk.CallToolRequest, in ListGa
 		out = append(out, GameSummary{
 			GameUUID:    f.Game.UUID,
 			CapturedAt:  f.CapturedAt,
+			StartTime:   f.Game.StartTime,
+			EndTime:     f.Game.EndTime,
 			Seats:       f.Game.Seats,
 			Rounds:      len(f.Game.Rounds),
 			Mode:        f.Game.Mode,

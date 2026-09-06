@@ -91,7 +91,7 @@ capture → decode → 保存を 1 コマンドにしたものです（上のク
 
 3 つの read-only tool を提供します。server はゲーム・Chrome・ネットワークへ一切接続しません。
 
-- `list_games` — 保存済みゲームの一覧（uuid、captured_at、局数、raw mode、最終点数、self_seat、MAKA 結合有無）
+- `list_games` — 保存済みゲームの一覧（uuid、対局日時 start_time/end_time、captured_at、局数、raw mode、最終点数、self_seat、MAKA 結合有無）。並び順は対局日時の新しい順（取り込み順ではない）
 - `get_round` — 1 局の全決断（盤面・MAKA 候補・rating 込み）
 - `find_mistakes` — `score_delta_vs_best >= threshold`（既定 10）の打牌を delta 降順で返す。`seat` は保存済み `self_seat` があれば省略可、無ければ明示エラー（seat 0 への fallback はしない）。実選択が候補外の決断は delta 不明として件数のみ報告
 

@@ -52,6 +52,14 @@
               "rule": "repeated",
               "type": "AccountSeat",
               "id": 11
+            },
+            "start_time": {
+              "type": "uint32",
+              "id": 2
+            },
+            "end_time": {
+              "type": "uint32",
+              "id": 3
             }
           }
         },
