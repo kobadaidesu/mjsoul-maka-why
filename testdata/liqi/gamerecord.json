@@ -132,6 +132,14 @@
               "rule": "repeated",
               "type": "string",
               "id": 16
+            },
+            "liqibang": {
+              "type": "uint32",
+              "id": 6
+            },
+            "left_tile_count": {
+              "type": "uint32",
+              "id": 15
             }
           }
         },
@@ -149,6 +157,14 @@
               "rule": "repeated",
               "type": "string",
               "id": 6
+            },
+            "left_tile_count": {
+              "type": "uint32",
+              "id": 3
+            },
+            "liqi": {
+              "type": "LiQiSuccess",
+              "id": 5
             }
           }
         },
@@ -235,6 +251,11 @@
               "rule": "repeated",
               "type": "int32",
               "id": 5
+            },
+            "old_scores": {
+              "rule": "repeated",
+              "type": "int32",
+              "id": 2
             }
           }
         },
@@ -400,6 +421,22 @@
         },
         "ReqOauth2Login": {
           "fields": {}
+        },
+        "LiQiSuccess": {
+          "fields": {
+            "seat": {
+              "type": "uint32",
+              "id": 1
+            },
+            "score": {
+              "type": "int32",
+              "id": 2
+            },
+            "liqibang": {
+              "type": "uint32",
+              "id": 3
+            }
+          }
         }
       }
     }

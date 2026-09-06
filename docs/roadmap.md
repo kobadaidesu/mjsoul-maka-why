@@ -39,7 +39,9 @@ capture (CDP観測, internal/capture)
 - `find_mistakes`: seat 省略時、stored SelfSeat があればそれを使用（憲法 §29 の仕様どおり）。無ければ従来の明示エラー。
 - 注意: ResLogin の account_id field 名は実測（capture 2 のリロードログイン応答）で確認してから使うこと。
 
-### ③ 盤面の完全復元 — branch `feature/board-state`（未着手）
+### ③ 盤面の完全復元 — branch `feature/board-state`
+
+状態: **実装完了・PR待ち**（LiQiSuccess の意味を実測で確定し、実牌譜 10 局で old_scores 照合 10/10・供託/残り牌数の整合を確認。findings #board-state 参照）
 
 - 目的: 各決断に「河・副露・各家のリーチ状態・残り牌数・供託」を付け、LLM 解説を具体化する。
 - 設計: extract の再生ループは既に全イベントを舐めているので、状態を広げるだけ。

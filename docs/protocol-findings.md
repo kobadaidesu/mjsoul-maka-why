@@ -312,3 +312,16 @@ NOTIFY（0x01）は 3 capture 通算で未観測のまま。lobby の非同期�
 ### 未確認のまま残る事項
 
 - `seer_index` の意味。`SeerScore.rating` のグレード表示への変換規則（十の位=グレード仮説は CANDIDATE のまま raw 出力）。UI「全体評価」の取得元。action `2`/`3`/`4`。複数和了（ダブロン）時の解決順。`fetchSeerReportList` / `fetchSeerInfo` の各 field 意味。
+
+<a id="board-state"></a>
+## 2026-09-06: リーチ棒・点数変動の実測（盤面復元用）
+
+確認日時: 2026-09-06 17:20 JST。対象は Phase 1 capture の牌譜（全 5 リーチ・全 10 和了）。
+
+- `RecordDealTile.liqi`（`LiQiSuccess`、直前巡に宣言した seat の次ツモに付く）: `score` は **1000 点供託後の宣言者の持ち点**、`liqibang` は **その時点の累積供託本数**。観測した全 5 リーチで `score == 直前の持ち点 - 1000`、`liqibang` は 1,2,1,2,1,1,1 と単調に一致した。`failed` は全て false。
+- `RecordHule.old_scores` は供託控除込みの和了直前の点数で、上記から追跡した盤面残高と **10/10 の和了すべてで一致**（この照合は extract の恒常検証として実装済み。矛盾は round issue になる）。
+- `RecordNewRound.liqibang` は持ち越し供託（全局 0 を観測 — 供託は全て和了で回収されたため。非 0 の実測は未取得だが field 名と 0 値は確認）。
+- `RecordNewRound.left_tile_count` / `RecordDealTile.left_tile_count` は残り牌数としてそのまま使用（南2局 10 巡目で 40、東2局終盤で 4 を観測、進行と整合）。
+- `RecordChiPengGang.scores` / `liqibang` は本牌譜では一度も出現せず **未実測**（使用しない）。
+
+これらに基づき、各打牌決断へ `board_before`（点数・ドラ表示・残り牌数・供託・リーチ宣言・河・副露）を付与した。河は鳴かれた牌も残す（鳴かれは melds の froms で判別）。
