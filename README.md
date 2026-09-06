@@ -24,6 +24,7 @@ make build
 # 3. その Chrome で雀魂にログインし、取り込みを開始
 ./bin/mjcap ingest
 #    → 牌譜を開いて MAKA を表示（複数件続けて可）→ Ctrl-C で自動 decode + 保存
+#    ※ 2 と 3 は scripts/ingest-session.command 1 つで代替可（Dock やホットキーに置ける）
 
 # 4. MCP サーバとして LLM クライアントに登録
 claude mcp add --scope user mjcap -- "$PWD/bin/mjcap" mcp --games-dir "$PWD/data/games"
