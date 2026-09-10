@@ -109,13 +109,13 @@ capture (CDP観測, internal/capture)
 
 ### ⑨ CLI 内部整理 — branch `feature/cli-refactor`
 
-状態: **実装済み・設計検収待ち**（2026-09-10。外部挙動・保存 JSON・終了コード・既存ログ文言は不変）
+状態: **実装済み・設計検収待ち**（2026-09-10。外部挙動・保存 JSON・終了コード・既存ログ文言は不変。例外: plain ログの対応行に `cli_event` 属性が追加される）
 
 - 内容（3 件、詳細は decisions.md 2026-09-10）:
   1. ingest の capture 実行依存を関数引数で注入（可変グローバル `runCaptureFn` を廃止）。並列に独立実行しても共有状態がないことをテストで確認。
   2. decode を引数処理 / capture 収集 / 結合と順次保存 / JSON 出力に分割。逐次 join→store と後続失敗時の先行保存維持、open/close のエラー境界は従来どおり。合成 capture（wire フレーム + 実 evidence ファイル）で CLI 実経路の end-to-end 試験を追加。
   3. 進行表示を英語ログ文言への完全一致から `cli_event` 属性（固定 CLI 識別子）に置き換え。発行側 → handler の実経路試験で識別子の付与漏れを検知。
-- 未確認: capture の成功系 emitter（opened/ready/stopped/interrupted）の実経路は実 Chrome が必要なため合成試験では失敗系（discover）のみ。次回の実機 ingest（①⑥⑧の検収手順）で進行表示が従来どおり出ることを併せて確認する。
+- 未確認: capture の成功系 emitter（opened/ready/stopped/interrupted）の発行 → handler の実経路試験は今回未実施（実施済みなのは表示処理の合成試験・発行箇所の差分確認・失敗系 discover の実経路まで）。次回の実機 ingest（①⑥⑧の検収手順）で進行表示が従来どおり出ることを確認する。
 
 ## 未検収項目と手動検収手順（次回の実取り込み時に実施）
 

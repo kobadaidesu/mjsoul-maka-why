@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -271,7 +271,12 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 	const uuid = "synthetic-uuid"
 	dir := t.TempDir()
 	capturePath := filepath.Join(dir, "capture.jsonl")
+	writeStart := time.Now()
 	writeWSCapture(t, capturePath, offlineCaptureFrames(t, r, uuid))
+	writeEnd := time.Now()
+	// Separate the capture window from the decode run so a captured_at taken
+	// from the decode clock would land outside [writeStart, writeEnd].
+	time.Sleep(20 * time.Millisecond)
 	gamesDir := filepath.Join(dir, "games")
 	outPath := filepath.Join(dir, "out.json")
 
@@ -281,12 +286,18 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 		t.Fatalf("decode failed (%d): %s", code, errBuf.String())
 	}
 
-	stored, err := os.ReadFile(filepath.Join(gamesDir, uuid+".json"))
+	storedPath := filepath.Join(gamesDir, uuid+".json")
+	if info, err := os.Stat(storedPath); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("stored game not private: %v %v", info, err)
+	}
+	stored, err := os.ReadFile(storedPath)
 	if err != nil {
 		t.Fatalf("stored game missing: %v", err)
 	}
 	var doc struct {
-		Game struct {
+		SchemaVersion int       `json:"schema_version"`
+		CapturedAt    time.Time `json:"captured_at"`
+		Game          struct {
 			UUID      string   `json:"game_uuid"`
 			StartTime uint64   `json:"start_time"`
 			EndTime   uint64   `json:"end_time"`
@@ -311,6 +322,14 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 	}
 	if err := json.Unmarshal(stored, &doc); err != nil {
 		t.Fatalf("stored game unreadable: %v\n%s", err, stored)
+	}
+	// The store keeps its schema version and the capture event's timestamp,
+	// not the decode run's clock (the decode started after writeEnd).
+	if doc.SchemaVersion != 1 {
+		t.Fatalf("schema_version = %d, want 1", doc.SchemaVersion)
+	}
+	if doc.CapturedAt.IsZero() || doc.CapturedAt.Before(writeStart) || doc.CapturedAt.After(writeEnd) {
+		t.Fatalf("captured_at %v not preserved from the capture window [%v, %v]", doc.CapturedAt, writeStart, writeEnd)
 	}
 	g := doc.Game
 	if g.UUID != uuid || g.StartTime != 111 || g.EndTime != 222 || g.MakaUUID != uuid || g.Version != 210715 || len(g.Issues) != 0 {
@@ -356,10 +375,40 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 		t.Fatal("--out must end with a newline")
 	}
 
-	// --out must never overwrite an existing file.
+	// The stored game object and --out entry are the same normalized game.
+	var storedDoc struct {
+		Game any `json:"game"`
+	}
+	var outAny []any
+	if err := json.Unmarshal(stored, &storedDoc); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(outData, &outAny); err != nil || len(outAny) != 1 {
+		t.Fatalf("--out shape: %v", err)
+	}
+	if !reflect.DeepEqual(storedDoc.Game, outAny[0]) {
+		t.Fatalf("stored game and --out entry differ:\n%v\n%v", storedDoc.Game, outAny[0])
+	}
+
+	// No player identifiers reach the normal logs or the normalized JSON:
+	// the synthetic account id 222222 exists only inside the raw capture.
+	for name, blob := range map[string][]byte{"logs": errBuf.Bytes(), "stored": stored, "out": outData} {
+		for _, banned := range []string{"222222", "account_id", "nickname"} {
+			if bytes.Contains(blob, []byte(banned)) {
+				t.Fatalf("%s contains %q:\n%s", name, banned, blob)
+			}
+		}
+	}
+
+	// --out must never overwrite an existing file, and a rejected run must
+	// leave the existing bytes untouched.
 	errBuf.Reset()
 	if code := runDecodeWith([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--out", outPath, capturePath}, &errBuf, nil); code != 1 {
 		t.Fatalf("existing --out overwritten (code %d): %s", code, errBuf.String())
+	}
+	after, err := os.ReadFile(outPath)
+	if err != nil || !bytes.Equal(after, outData) {
+		t.Fatalf("--out bytes changed after rejected run: %v", err)
 	}
 
 	// UUID filter that matches nothing fails with the original message.
@@ -430,9 +479,9 @@ func TestOfflineDecodeCLIFailures(t *testing.T) {
 	}
 }
 
-// captureBindingMatchesOfflineEvidence guards the fixture invariant the
-// other tests rely on: frames built from the in-memory resource decode under
-// the evidence files written to disk.
+// TestOfflineEvidenceRoundTrip guards the fixture invariant the other tests
+// rely on: frames built from the in-memory resource decode under the
+// evidence files written to disk.
 func TestOfflineEvidenceRoundTrip(t *testing.T) {
 	metaPath, _, r := offlineEvidence(t)
 	loaded, err := liqi.OpenCachedMetadata(metaPath)
@@ -442,5 +491,54 @@ func TestOfflineEvidenceRoundTrip(t *testing.T) {
 	if loaded.Metadata.SHA256 != r.Metadata.SHA256 || loaded.Metadata.GameVersion != r.Metadata.GameVersion {
 		t.Fatalf("evidence round trip mismatch: %+v vs %+v", loaded.Metadata, r.Metadata)
 	}
-	fmt.Fprint(os.Stderr, "")
+}
+
+// TestOfflineDecodeOrderIndependence verifies that reports and logins are
+// collected from the whole capture before joining: report -> game -> login
+// produces the same normalized game (self seat, MAKA join included) as
+// login -> game -> report.
+func TestOfflineDecodeOrderIndependence(t *testing.T) {
+	metaPath, profilePath, r := offlineEvidence(t)
+	const uuid = "synthetic-uuid"
+	loginReq, loginRes := loginFrames(t, r, 222222)
+	reversed := []wsFrame{
+		{"sent", rpcFrame(2, 4, wrapLogin(t, r, fetchSeerReportMethod, nil))},
+		{"received", rpcFrame(3, 4, wrapLogin(t, r, "", offlineSeerResponse(t, r, uuid)))},
+		{"sent", rpcFrame(2, 5, wrapLogin(t, r, fetchGameRecordMethod, nil))},
+		{"received", rpcFrame(3, 5, wrapLogin(t, r, "", offlineRecordResponse(t, r, uuid)))},
+		{"sent", loginReq},
+		{"received", loginRes},
+	}
+	decodeGame := func(name string, frames []wsFrame) map[string]any {
+		dir := t.TempDir()
+		capturePath := filepath.Join(dir, name+".jsonl")
+		writeWSCapture(t, capturePath, frames)
+		gamesDir := filepath.Join(dir, "games")
+		var errBuf bytes.Buffer
+		if code := runDecodeWith([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", gamesDir, capturePath}, &errBuf, nil); code != 0 {
+			t.Fatalf("%s decode failed (%d): %s", name, code, errBuf.String())
+		}
+		raw, err := os.ReadFile(filepath.Join(gamesDir, uuid+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatal(err)
+		}
+		game, ok := doc["game"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s stored file has no game object", name)
+		}
+		return game
+	}
+	standard := decodeGame("standard", offlineCaptureFrames(t, r, uuid))
+	swapped := decodeGame("reversed", reversed)
+	if !reflect.DeepEqual(standard, swapped) {
+		t.Fatalf("game differs by capture order:\nstandard: %v\nreversed: %v", standard, swapped)
+	}
+	// Sanity: the shared result actually carries the join and self seat.
+	if swapped["self_seat"] != float64(3) || swapped["maka_uuid"] != uuid {
+		t.Fatalf("reversed order lost self seat or MAKA join: %v", swapped)
+	}
 }
