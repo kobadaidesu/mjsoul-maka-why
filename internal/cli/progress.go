@@ -72,11 +72,14 @@ func (f *friendly) handle(level slog.Level, msg string, attrs map[string]string)
 			f.print("[!!] MAKA 評価が未取得 (MAKA 未表示の可能性)")
 		}
 		if attrs["self_seat_known"] == "false" {
-			f.print("[--] 自席: 不明 (スキャン中にログイン通信がない場合は判定不可)")
+			f.print("[--] 自席: 不明 (このスキャンにも過去の capture にもログイン応答がありません)")
 		}
 		if attrs["issues"] != "" && attrs["issues"] != "0" {
 			f.print("[!!] 復元時の注意 %s 件 (保存 JSON の issues を参照)", attrs["issues"])
 		}
+		return
+	case "self seat login reused from earlier capture":
+		f.print("[--] 自席判定: 過去の capture のログイン応答を再利用 (%s)", attrs["capture"])
 		return
 	case "game stored":
 		f.stored++

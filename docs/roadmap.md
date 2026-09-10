@@ -77,6 +77,15 @@ capture (CDP観測, internal/capture)
 - 設計: `internal/cli/progress.go` の `friendly`（slog.Handler）が既存ログを変換するだけ。capture/decode は logger 注入（`runCaptureWith` / `runDecodeWith`）以外変更なし。キャッチ検出は `--log-names` の message 名（fetchGameRecord / fetchSeerReport / oauth2Login の received）を利用し、payload・URL・個人情報は表示しない。`body_budget_limit` 等の body 状態警告は表示から抑制（private capture には従来どおり全記録）。
 - 既定 ON。従来の構造化ログは `mjcap ingest --plain`。
 
+### ⑦ 過去 capture のログイン再利用による自席判定 — branch `feature/login-reuse`
+
+状態: **実装完了・PR待ち**（実データで確認: login なし capture の decode が別 capture のログイン応答を再利用し self_seat=3 を判定・保存）
+
+- 目的: スキャン中にログイン通信が無くても self_seat を判定する。②の制約（attach がログイン後だと判定不可）の解消。
+- 設計: decode 時に現 capture にログイン応答が無ければ、`--login-from-captures DIR`（ingest は既定で `data/captures` を渡す、`--reuse-login=false` で無効化）の capture を新しい順に走査し、最初に見つかったログイン応答の account_id を**メモリ上のみ**で席テーブルと照合する。HMAC 等の識別子保存はしない — raw capture が既に private (0600, Git 対象外) に ID を保持しているため、新たな保存先を作らない方が露出面が増えない。
+- 複数アカウント対策（共有ディレクトリ）: 席テーブルに一致した既知 ID がちょうど 1 件のときだけ採用。0 件・複数件は従来どおり不明。
+- ログには再利用元 capture のファイル名のみ出す。account_id は保存・ログ出力とも一切しない（憲法 §25/§45 維持）。
+
 ## 完了済み機能の落ち穂（優先度低・未着手）
 
 - NOTIFY(0x01) の実測 → envelope profile の notify 補完（ロビー通知が来るキャプチャ待ち）。

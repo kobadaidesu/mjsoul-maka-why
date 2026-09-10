@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"mjcap/internal/capture"
@@ -52,30 +53,34 @@ const (
 	oauth2LoginMethod     = ".lq.Lobby.oauth2Login"
 )
 
-// selfSeatFromHead matches the logged-in account against the record's seat
-// table and returns only the seat number. The account identifiers stay in
-// memory; they are never stored or logged (AGENTS.md privacy rules).
-func selfSeatFromHead(head protoreflect.Message, accountID uint64) *int {
-	if accountID == 0 {
+// selfSeatFromHead matches known logged-in accounts against the record's
+// seat table and returns only the seat number, and only when exactly one
+// seat matches — several known accounts in the same game (e.g. a shared
+// captures directory) are ambiguous and stay unknown. The account
+// identifiers stay in memory; they are never stored or logged (AGENTS.md
+// privacy rules).
+func selfSeatFromHead(head protoreflect.Message, loginIDs map[uint64]bool) *int {
+	if len(loginIDs) == 0 {
 		return nil
 	}
 	accounts, err := decode.MessagesField(head, "accounts")
 	if err != nil {
 		return nil
 	}
+	var seat *int
 	for _, acc := range accounts {
 		id, err := decode.UintField(acc, "account_id")
-		if err != nil || id != accountID {
+		if err != nil || !loginIDs[id] {
 			continue
 		}
-		seat, err := decode.UintField(acc, "seat")
-		if err != nil {
+		s, err := decode.UintField(acc, "seat")
+		if err != nil || seat != nil {
 			return nil
 		}
-		s := int(seat)
-		return &s
+		v := int(s)
+		seat = &v
 	}
-	return nil
+	return seat
 }
 
 func runDecode(args []string, stderr io.Writer) int {
@@ -90,6 +95,7 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 	uuid := fs.String("game-uuid", "", "only decode the record with this game uuid")
 	out := fs.String("out", "", "write reconstruction JSON to this new file (default: stdout)")
 	gamesDir := fs.String("games-dir", "", "also store each game as {uuid}.json (schema_version 1) in this private directory")
+	loginDir := fs.String("login-from-captures", "", "when this capture has no login, resolve the self seat from the newest login response in this captures directory (ids stay in memory, never stored or logged)")
 	var names nameOptions
 	names.flags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -129,7 +135,7 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 	}
 	var pending []pendingGame
 	reports := map[string]protoreflect.Message{}
-	var accountID uint64
+	loginIDs := map[uint64]bool{}
 	replayErr := capture.Replay(f, func(e capture.Event) error {
 		if err := checkCaptureBinding(e, n, meta); err != nil {
 			return err
@@ -141,7 +147,7 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 		switch frame.Name {
 		case oauth2LoginMethod:
 			if id, err := decode.UintField(frame.Message, "account_id"); err == nil && id != 0 {
-				accountID = id
+				loginIDs[id] = true
 			}
 			return nil
 		case fetchSeerReportMethod:
@@ -199,9 +205,20 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 		logger.Error("no matching game record response in capture")
 		return 1
 	}
+	if len(loginIDs) == 0 && *loginDir != "" {
+		ids, source := reuseLoginIDs(*loginDir, fs.Arg(0), func(path string) []uint64 {
+			return loginIDsFromCapture(path, n, meta, names.resource)
+		})
+		for _, id := range ids {
+			loginIDs[id] = true
+		}
+		if len(ids) > 0 {
+			logger.Info("self seat login reused from earlier capture", "capture", filepath.Base(source))
+		}
+	}
 	var games []extract.Game
 	for _, p := range pending {
-		p.game.SelfSeat = selfSeatFromHead(p.head, accountID)
+		p.game.SelfSeat = selfSeatFromHead(p.head, loginIDs)
 		if report, ok := reports[p.game.UUID]; ok {
 			if err := extract.JoinSeer(&p.game, p.detail, report); err != nil {
 				logger.Error("join seer report", "seq", p.seq, "error", err)

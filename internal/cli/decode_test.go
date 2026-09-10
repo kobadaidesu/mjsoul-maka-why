@@ -36,16 +36,32 @@ func recordHead(t *testing.T, seats map[uint64]uint64) protoreflect.Message {
 	return head
 }
 
+func ids(v ...uint64) map[uint64]bool {
+	m := map[uint64]bool{}
+	for _, id := range v {
+		m[id] = true
+	}
+	return m
+}
+
 func TestSelfSeatFromHead(t *testing.T) {
 	head := recordHead(t, map[uint64]uint64{111111: 0, 222222: 2, 333333: 3})
-	if s := selfSeatFromHead(head, 222222); s == nil || *s != 2 {
+	if s := selfSeatFromHead(head, ids(222222)); s == nil || *s != 2 {
 		t.Fatalf("matched account not resolved: %v", s)
 	}
-	if s := selfSeatFromHead(head, 999999); s != nil {
+	if s := selfSeatFromHead(head, ids(999999)); s != nil {
 		t.Fatalf("unknown account produced a seat: %v", s)
 	}
-	// account id 0 means no login was observed; never match the zero value.
-	if s := selfSeatFromHead(head, 0); s != nil {
-		t.Fatalf("zero account id matched: %v", s)
+	// No login observed anywhere: never guess.
+	if s := selfSeatFromHead(head, ids()); s != nil {
+		t.Fatalf("empty id set matched: %v", s)
+	}
+	// Two known accounts in the same game (shared captures directory) are
+	// ambiguous; the seat must stay unknown rather than guessed.
+	if s := selfSeatFromHead(head, ids(111111, 333333)); s != nil {
+		t.Fatalf("ambiguous accounts produced a seat: %v", s)
+	}
+	if s := selfSeatFromHead(head, ids(111111, 999999)); s == nil || *s != 0 {
+		t.Fatalf("single known account with an unknown extra not resolved: %v", s)
 	}
 }

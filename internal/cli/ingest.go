@@ -23,6 +23,7 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	gamesDir := fs.String("games-dir", filepath.Join("data", "games"), "private directory that stores decoded games")
 	duration := fs.Duration("duration", 0, "stop capturing after this duration; 0 waits for Ctrl-C")
 	plain := fs.Bool("plain", false, "structured text logs instead of the friendly progress view")
+	reuseLogin := fs.Bool("reuse-login", true, "when this scan has no login, resolve the self seat from an earlier capture's login response (ids stay in memory, never stored or logged)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -68,7 +69,11 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 		return code
 	}
 	logger.Info("ingest: decoding capture", "capture", capturePath)
-	code := runDecodeWith([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", *gamesDir, capturePath}, stderr, inner)
+	decodeArgs := []string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", *gamesDir}
+	if *reuseLogin {
+		decodeArgs = append(decodeArgs, "--login-from-captures", filepath.Join("data", "captures"))
+	}
+	code := runDecodeWith(append(decodeArgs, capturePath), stderr, inner)
 	if ui != nil && code == 0 {
 		fmt.Fprintln(stderr, "--------------------------------")
 		fmt.Fprintf(stderr, "完了: 牌譜 %d 件を保存しました\n", ui.storedGames())
