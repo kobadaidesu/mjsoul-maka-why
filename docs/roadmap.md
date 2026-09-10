@@ -22,7 +22,10 @@ capture (CDP観測, internal/capture)
 
 ### ① ingest ワンコマンド取り込み — branch `feature/ingest`
 
-状態: **実装完了・PR待ち**（実機で attach→capture→decode 連結を確認。実牌譜での保存確認は次回の取り込み時）
+状態: **main へ取り込み済み**（`bb50e81` = PR #4 merge。2026-09-10 に `git merge-base --is-ancestor` で main の祖先であることを確認）
+
+- 検証実績（実装時）: 実機での attach→capture→decode 連結を確認。
+- 未検収: 実牌譜の保存（「受信表示 → Ctrl-C → 保存結果」の一連照合。下記「未検収項目と手動検収手順」で実施）。2026-09-10 の取り込み確認はコミットの祖先確認のみ。
 
 - 目的: 「Chrome 起動 → capture → decode --games-dir」の 3 手順を `mjcap ingest` 1 コマンドにする。
 - 設計: capture と同じ attach → `ingest ready` 表示 → ユーザーが牌譜 + MAKA を手動で開く → Ctrl-C → その capture を即 decode して store へ。既存の capture/decode 実装を配線するだけで新しいプロトコル知識は持たない。
@@ -31,7 +34,10 @@ capture (CDP観測, internal/capture)
 
 ### ② 自席（self_seat）の自動判定 — branch `feature/self-seat`
 
-状態: **実装完了・PR待ち**（実 capture で self_seat=2 を検出、UI 検証済みの席と一致。ログイン通信の無い capture では従来どおり seat 必須）
+状態: **main へ取り込み済み**（`4a3ecae`。2026-09-10 に main の祖先であることを git で確認）
+
+- 検証実績（実装時）: 実 capture で self_seat=2 を検出し、UI 検証済みの席と一致。ログイン通信の無い capture では従来どおり seat 必須。2026-09-10 の取り込み確認はコミットの祖先確認のみで、再検証は行っていない。
+- TODO(verify): `ResLogin.account_id` の照合実測は decisions.md（2026-09-06）に記載があるが、protocol-findings.md に日時・方法つきの記録が無い。findings へ根拠を補完するまで、この件に関する CONFIRMED の追加はしない。
 
 - 目的: `find_mistakes` の seat 指定を省略可能にする。
 - 設計: capture 内のログイン応答（`.lq.Lobby.oauth2Login` の応答 `.lq.ResLogin`。field は decode 時に descriptor から解決）から自分の account_id を**メモリ上でのみ**取得し、`RecordGame.head.accounts[].{account_id, seat}` と照合して **seat 番号だけ**を `Game.SelfSeat` に保存する。account_id・nickname は保存もログもしない（憲法 §25/§45）。
@@ -41,7 +47,9 @@ capture (CDP観測, internal/capture)
 
 ### ③ 盤面の完全復元 — branch `feature/board-state`
 
-状態: **実装完了・PR待ち**（LiQiSuccess の意味を実測で確定し、実牌譜 10 局で old_scores 照合 10/10・供託/残り牌数の整合を確認。findings #board-state 参照）
+状態: **main へ取り込み済み**（`d4f8c12`。2026-09-10 に main の祖先であることを git で確認）
+
+- 検証実績（実装時）: LiQiSuccess の意味を実測で確定し、実牌譜 10 局で old_scores 照合 10/10・供託/残り牌数の整合を確認（findings #board-state 参照）。2026-09-10 は取り込み確認のみ。
 
 - 目的: 各決断に「河・副露・各家のリーチ状態・残り牌数・供託」を付け、LLM 解説を具体化する。
 - 設計: extract の再生ループは既に全イベントを舐めているので、状態を広げるだけ。
@@ -54,7 +62,9 @@ capture (CDP観測, internal/capture)
 
 ### ④ 鳴き行動値の実測 — branch `feature/call-actions`
 
-状態: **実装完了・PR待ち**（2=チー下/3=チー中/4=チー上/5=ポン/6=カン を実行18/18・フィージビリティ86/86で確定。findings #call-actions 参照。SeerCandidate.kind として出力）
+状態: **main へ取り込み済み**（`4c43f1c`。2026-09-10 に main の祖先であることを git で確認）
+
+- 検証実績（実装時）: 2=チー下/3=チー中/4=チー上/5=ポン/6=カン を実行18/18・フィージビリティ86/86で確定（findings #call-actions 参照。SeerCandidate.kind として出力）。2026-09-10 は取り込み確認のみ。
 
 - 目的: SeerPrediction.action の 2/3/4/5 を確定し、鳴き機会の分析を可能にする。
 - 仮説（未確定・要実測）: 1=見送り(確定済), 5=ポン(1例確認), 6=カン(1例確認), 7=和了(確定済) から類推して 2/3/4=チーの 3 変化（喰い位置）ではないか。
@@ -63,7 +73,7 @@ capture (CDP観測, internal/capture)
 
 ### ⑤ プロンプト整備 — branch `feature/prompting`
 
-状態: **実装完了・PR待ち**
+状態: **main へ取り込み済み**（`df580e2` で追加、`89d26b6` で analyze_game prompt をユーザー判断により削除し server instructions のみ残す。2026-09-10 に両コミットが main の祖先であることを git で確認）
 
 - MCP server `instructions` のみ（接続時に全クライアントへ渡る解釈ガイド: 牌表記、score の読み方と未検証の注意、delta 不明≠0、河は鳴かれ牌も保持、kind 一覧、推奨フロー）。
 - prompt テンプレート（analyze_game）は一度実装したが、素の依頼で同等の分析が出るためユーザー判断で削除。再追加するなら価値を再確認してから。
@@ -71,7 +81,9 @@ capture (CDP観測, internal/capture)
 
 ### ⑥ ingest の親しみやすい進行表示 — branch `feature/ingest-friendly-ui`
 
-状態: **完了（main へマージ済み）**（実 Chrome で接続〜失敗案内まで表示確認。実牌譜での [rx] 受信行は未確認 — 次回取り込みで確認）
+状態: **main へ取り込み済み**（実 Chrome で接続〜失敗案内までの表示は確認済み）
+
+- 未検収: 実牌譜での `[rx] 牌譜/MAKA 受信` 行の実表示（下記「未検収項目と手動検収手順」で①と同時に実施）。
 
 - 目的: `maka`（= `mjcap ingest`）実行時に、工程（接続 / スキャン中 / 牌譜・MAKA 受信 / 解析 / 保存）が `[ok]` / `[..]` / `[rx]` / `[!!]` / `[err]` のステータスタグで分かる進行表示を出す。
 - 設計: `internal/cli/progress.go` の `friendly`（slog.Handler）が既存ログを変換するだけ。capture/decode は logger 注入（`runCaptureWith` / `runDecodeWith`）以外変更なし。キャッチ検出は `--log-names` の message 名（fetchGameRecord / fetchSeerReport / oauth2Login の received）を利用し、payload・URL・個人情報は表示しない。`body_budget_limit` 等の body 状態警告は表示から抑制（private capture には従来どおり全記録）。
@@ -85,6 +97,23 @@ capture (CDP観測, internal/capture)
 - 設計: decode 時に現 capture にログイン応答が無ければ、`--login-from-captures DIR`（ingest は既定で `data/captures` を渡す、`--reuse-login=false` で無効化）の capture を新しい順に走査し、最初に見つかったログイン応答の account_id を**メモリ上のみ**で席テーブルと照合する。HMAC 等の識別子保存はしない — raw capture が既に private (0600, Git 対象外) に ID を保持しているため、新たな保存先を作らない方が露出面が増えない。
 - 複数アカウント対策（共有ディレクトリ）: 席テーブルに一致した既知 ID がちょうど 1 件のときだけ採用。0 件・複数件は従来どおり不明。
 - ログには再利用元 capture のファイル名のみ出す。account_id は保存・ログ出力とも一切しない（憲法 §25/§45 維持）。
+
+## 未検収項目と手動検収手順（次回の実取り込み時に実施）
+
+対象: ①の実牌譜保存、⑥の実機 `[rx]` 受信行。ユーザーの手動操作が必要（ゲーム通信の自動操作は憲法により禁止）。
+
+手順:
+
+1. `./scripts/maka`（または `maka`）を実行し、進行表示が `[..] スキャン中` になることを確認する。
+2. Chrome の雀魂で牌譜を開き、MAKA を表示する（複数件可）。開くたびにターミナルへ `[rx] 牌譜 N 件目を受信` / `[rx] MAKA 評価 N 件目を受信` が出ることを確認する（⑥）。
+3. ターミナルで Ctrl-C。`[ok] 保存: data/games/<uuid>.json` の行が、開いた牌譜の件数ぶん出て、該当ファイルが実在することを確認する（①）。
+4. 終了コードが 0 であることを確認する（`echo $?`）。
+
+記録項目（実施後、①⑥の状態欄へ日時つきで追記する）:
+
+- 実施日時 / mjcap の git HEAD
+- game_version・liqi resource_version（capture 冒頭の `capture_context`、または fetch-proto ログ）
+- 開いた牌譜の件数・`[rx]` 表示の有無と件数・保存された件数・終了コード
 
 ## 完了済み機能の落ち穂（優先度低・未着手）
 
