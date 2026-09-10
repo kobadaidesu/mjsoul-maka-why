@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"log/slog"
-	"net"
 	"strings"
 	"testing"
 
@@ -149,21 +148,16 @@ func TestNameLoggerToFriendlyRealPath(t *testing.T) {
 }
 
 // TestCaptureToFriendlyRealPath drives the real capture CLI failure path
-// (loopback endpoint with nothing listening — no external connection) into
-// the friendly handler, covering the discover emitter end to end.
+// into the friendly handler, covering the discover emitter end to end. A
+// pre-canceled context makes the discover HTTP request fail deterministically
+// without any connection, so the result cannot depend on the environment.
 func TestCaptureToFriendlyRealPath(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	endpoint := "http://" + l.Addr().String()
-	if err := l.Close(); err != nil {
-		t.Fatal(err)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	_, logger, out := friendlyLogger()
 	var errBuf bytes.Buffer
-	if code := runCaptureWith(context.Background(), []string{"--endpoint", endpoint}, &errBuf, logger); code != 1 {
-		t.Fatalf("capture against closed port returned %d: %s%s", code, errBuf.String(), out.String())
+	if code := runCaptureWith(ctx, []string{"--endpoint", "http://127.0.0.1:9222"}, &errBuf, logger); code != 1 {
+		t.Fatalf("capture with canceled context returned %d: %s%s", code, errBuf.String(), out.String())
 	}
 	if got := out.String(); !strings.Contains(got, "[err] Chrome (デバッグポート) に接続できません") {
 		t.Fatalf("discover failure line missing through the real emitter:\n%s", got)
