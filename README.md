@@ -20,28 +20,46 @@ Phase 0〜4 は完了しています（各 Phase はユーザー承認を経て�
 
 ## クイックスタート
 
+### 初回セットアップ
+
 ```sh
-# 1. ビルドと schema 取得（初回のみ）
+# 1. ビルドと schema 取得
 make build
 ./bin/mjcap fetch-proto --cache-dir .cache/mjcap/liqi
 
-# 2. 専用 Chrome を起動（普段のプロファイルは使わない）
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.local/share/mjcap/chrome-profile"
+# 2. envelope profile の実測（.cache/mjcap/protocol/ に 1 個作る）
+#    手順: docs/phase1-capture.md（プロトコル形式は同梱しない方針のため、各自 1 回実測が必要）
 
-# 3. その Chrome で雀魂にログインし、取り込みを開始
-./bin/mjcap ingest
-#    → 牌譜を開いて MAKA を表示（複数件続けて可）→ Ctrl-C で自動 decode + 保存
-
-# 4. MCP サーバとして LLM クライアントに登録
+# 3. MCP サーバとして LLM クライアントに登録
 claude mcp add --scope user mjcap -- "$PWD/bin/mjcap" mcp --games-dir "$PWD/data/games"
+```
+
+### ふだんの取り込み — `maka`
+
+```sh
+./scripts/maka
+```
+
+これだけで専用 Chrome（普段のプロファイルとは別）が起動して雀魂が開きます。ログインして牌譜を開き MAKA を表示（複数件続けて可）→ ターミナルで Ctrl-C すると自動で decode・保存されます。どこからでも打てるようにするには alias を張ってください:
+
+```sh
+alias maka="$HOME/path/to/mjsoul-maka-why/scripts/maka"
 ```
 
 あとは LLM に「この半荘のミス打牌を MAKA の数値付きで解説して」と聞くだけです。
 
 ## コマンド
+
+### maka — Chrome 起動 + ingest のラッパ（ふだん使うのはこれ）
+
+`scripts/maka` は「デバッグ用 Chrome（ポート 9222）で雀魂が開いていなければ起動して 2 秒待つ → `mjcap ingest` を実行」するだけの POSIX sh スクリプトです。追加引数はそのまま ingest に渡ります（例: `scripts/maka --plain`）。Chrome の場所とプロファイルは `MJCAP_CHROME` / `MJCAP_CHROME_PROFILE` で変更できます。手動で同じことをする場合の Chrome 起動コマンド:
+
+```sh
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.local/share/mjcap/chrome-profile"
+```
 
 ### fetch-proto — 公開 schema の取得
 
