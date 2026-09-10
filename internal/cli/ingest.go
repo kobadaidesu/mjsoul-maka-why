@@ -38,8 +38,8 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	if !*plain {
 		ui = &friendly{w: stderr}
 		logger = slog.New(friendlyHandler{ui})
-		fmt.Fprintln(stderr, "🀄 雀魂スキャン — mjcap ingest")
-		fmt.Fprintln(stderr, "──────────────────────────────")
+		fmt.Fprintln(stderr, "mjcap ingest — 雀魂 牌譜スキャン")
+		fmt.Fprintln(stderr, "--------------------------------")
 	}
 	metaPath, err := resolveEvidencePath(*meta, filepath.Join(".cache", "mjcap", "liqi", "*.meta.json"), "--liqi-meta", "run `mjcap fetch-proto --cache-dir .cache/mjcap/liqi` first")
 	if err != nil {
@@ -70,9 +70,8 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	logger.Info("ingest: decoding capture", "capture", capturePath)
 	code := runDecodeWith([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", *gamesDir, capturePath}, stderr, inner)
 	if ui != nil && code == 0 {
-		fmt.Fprintln(stderr, "──────────────────────────────")
-		fmt.Fprintf(stderr, "🎉 取り込み完了！保存した牌譜: %d 件\n", ui.storedGames())
-		fmt.Fprintln(stderr, "   Claude に「最新のゲームのミスを解説して」と聞いてみてね")
+		fmt.Fprintln(stderr, "--------------------------------")
+		fmt.Fprintf(stderr, "完了: 牌譜 %d 件を保存しました\n", ui.storedGames())
 	}
 	return code
 }

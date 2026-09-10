@@ -73,7 +73,7 @@ capture (CDP観測, internal/capture)
 
 状態: **実装完了・PR待ち**（実 Chrome で接続 → スキャン中 → 空 capture の失敗案内まで表示確認。牌譜キャッチ行の実表示は次回の取り込み時）
 
-- 目的: `maka`（= `mjcap ingest`）実行時に、工程（接続 / スキャン中 / 牌譜・MAKA キャッチ / 解析 / 保存）が誰にでも分かる日本語＋絵文字の進行表示を出す。
+- 目的: `maka`（= `mjcap ingest`）実行時に、工程（接続 / スキャン中 / 牌譜・MAKA 受信 / 解析 / 保存）が `[ok]` / `[..]` / `[rx]` / `[!!]` / `[err]` のステータスタグで分かる進行表示を出す。
 - 設計: `internal/cli/progress.go` の `friendly`（slog.Handler）が既存ログを変換するだけ。capture/decode は logger 注入（`runCaptureWith` / `runDecodeWith`）以外変更なし。キャッチ検出は `--log-names` の message 名（fetchGameRecord / fetchSeerReport / oauth2Login の received）を利用し、payload・URL・個人情報は表示しない。`body_budget_limit` 等の body 状態警告は表示から抑制（private capture には従来どおり全記録）。
 - 既定 ON。従来の構造化ログは `mjcap ingest --plain`。
 

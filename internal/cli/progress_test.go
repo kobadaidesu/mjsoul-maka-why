@@ -32,16 +32,16 @@ func TestFriendlyViewMapsKnownRecords(t *testing.T) {
 
 	got := out.String()
 	for _, want := range []string{
-		"接続しました",
-		"スキャン中",
-		"牌譜をキャッチ！（2件目）",
-		"MAKA 評価をキャッチ！（1件目）",
-		"ログインを確認しました",
-		"スキャン終了",
-		"全8局・判断120回（MAKA 結合 118回）",
-		"自分の席は特定できませんでした",
-		"💾 保存しました → data/games/u.json",
-		"⚠️ unmapped warning（boom）",
+		"[ok] Chrome の雀魂タブに接続",
+		"[..] スキャン中",
+		"[rx] 牌譜 2 件目を受信",
+		"[rx] MAKA 評価 1 件目を受信",
+		"[rx] ログイン応答を確認",
+		"[--] スキャン終了",
+		"[ok] 復元: 全8局 / 判断 120 / MAKA 結合 118",
+		"[--] 自席: 不明",
+		"[ok] 保存: data/games/u.json",
+		"[!!] unmapped warning (boom)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
@@ -62,8 +62,8 @@ func TestFriendlyViewFailureHints(t *testing.T) {
 	logger := slog.New(friendlyHandler{&friendly{w: &out}})
 	logger.Error("no matching game record response in capture")
 	logger.Error("discover Chrome", "error", "connection refused")
-	if got := out.String(); !strings.Contains(got, "牌譜が 1 件も記録されていません") ||
-		!strings.Contains(got, "Chrome に接続できませんでした") ||
+	if got := out.String(); !strings.Contains(got, "[err] 牌譜が記録されていません") ||
+		!strings.Contains(got, "[err] Chrome (デバッグポート) に接続できません") ||
 		strings.Contains(got, "connection refused") {
 		t.Errorf("unexpected failure output:\n%s", got)
 	}
