@@ -120,28 +120,26 @@ func TestCaptureFlagParsePolicyBoundary(t *testing.T) {
 	}
 }
 
-// TestIngestHandsHTTPBodiesToCapture runs the real ingest CLI entry and the
-// real capture flag parsing on the exact argv ingest produced, so a break
-// anywhere along runIngest -> args -> capture flags -> BodyPolicy fails.
+// TestIngestHandsHTTPBodiesToCapture runs the real ingest flag parsing and
+// the real capture flag parsing on the exact argv ingest produced, so a
+// break anywhere along runIngestWith -> args -> capture flags -> BodyPolicy
+// fails. The capture runner is injected per call; no shared state.
 func TestIngestHandsHTTPBodiesToCapture(t *testing.T) {
-	var captured []string
-	orig := runCaptureFn
-	runCaptureFn = func(_ context.Context, args []string, _ io.Writer, _ *slog.Logger) int {
-		captured = args
-		return 3 // sentinel: stop ingest before decode
-	}
-	defer func() { runCaptureFn = orig }()
 	for _, tc := range []struct {
 		args    []string
 		disable bool
 	}{
-		{[]string{"ingest", "--liqi-meta", "m.json", "--protocol", "p.json"}, true},
-		{[]string{"ingest", "--plain", "--liqi-meta", "m.json", "--protocol", "p.json"}, true},
-		{[]string{"ingest", "--http-bodies", "--liqi-meta", "m.json", "--protocol", "p.json"}, false},
+		{[]string{"--liqi-meta", "m.json", "--protocol", "p.json"}, true},
+		{[]string{"--plain", "--liqi-meta", "m.json", "--protocol", "p.json"}, true},
+		{[]string{"--http-bodies", "--liqi-meta", "m.json", "--protocol", "p.json"}, false},
 	} {
-		captured = nil
+		var captured []string
+		runner := func(_ context.Context, args []string, _ io.Writer, _ *slog.Logger) int {
+			captured = args
+			return 3 // sentinel: stop ingest before decode
+		}
 		var out bytes.Buffer
-		if code := Run(context.Background(), tc.args, &out); code != 3 {
+		if code := runIngestWith(context.Background(), tc.args, &out, runner); code != 3 {
 			t.Fatalf("%v: ingest did not reach capture (code %d, output %s)", tc.args, code, out.String())
 		}
 		opts, code := parseCaptureFlags(captured, &out)
@@ -150,6 +148,48 @@ func TestIngestHandsHTTPBodiesToCapture(t *testing.T) {
 		}
 		if opts.policy.DisableHTTPBodies != tc.disable {
 			t.Fatalf("%v: DisableHTTPBodies=%v want %v (argv %v)", tc.args, opts.policy.DisableHTTPBodies, tc.disable, captured)
+		}
+	}
+}
+
+// TestIngestRunnersAreIndependent runs two ingest invocations concurrently
+// with distinct injected runners and verifies neither observes the other's
+// arguments — the property the removed mutable package global could not
+// guarantee.
+func TestIngestRunnersAreIndependent(t *testing.T) {
+	run := func(endpoint string) []string {
+		var captured []string
+		runner := func(_ context.Context, args []string, _ io.Writer, _ *slog.Logger) int {
+			captured = args
+			return 3
+		}
+		var out bytes.Buffer
+		if code := runIngestWith(context.Background(), []string{"--endpoint", endpoint, "--liqi-meta", "m.json", "--protocol", "p.json"}, &out, runner); code != 3 {
+			t.Errorf("ingest for %s did not reach its runner (code %d)", endpoint, code)
+		}
+		return captured
+	}
+	endpoints := []string{"http://127.0.0.1:11111", "http://127.0.0.1:22222"}
+	results := make([][]string, len(endpoints))
+	done := make(chan int, len(endpoints))
+	for i := range endpoints {
+		go func(i int) {
+			results[i] = run(endpoints[i])
+			done <- i
+		}(i)
+	}
+	for range endpoints {
+		<-done
+	}
+	for i, endpoint := range endpoints {
+		found := false
+		for j, a := range results[i] {
+			if a == "--endpoint" && j+1 < len(results[i]) && results[i][j+1] == endpoint {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("runner %d saw argv %v, want its own endpoint %s", i, results[i], endpoint)
 		}
 	}
 }
