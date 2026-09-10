@@ -69,6 +69,14 @@ capture (CDP観測, internal/capture)
 - prompt テンプレート（analyze_game）は一度実装したが、素の依頼で同等の分析が出るためユーザー判断で削除。再追加するなら価値を再確認してから。
 - 記載内容は実測済み事実と「未検証」の明示のみで構成し、findings と矛盾させないこと。
 
+### ⑥ ingest の親しみやすい進行表示 — branch `feature/ingest-friendly-ui`
+
+状態: **実装完了・PR待ち**（実 Chrome で接続 → スキャン中 → 空 capture の失敗案内まで表示確認。牌譜キャッチ行の実表示は次回の取り込み時）
+
+- 目的: `maka`（= `mjcap ingest`）実行時に、工程（接続 / スキャン中 / 牌譜・MAKA キャッチ / 解析 / 保存）が誰にでも分かる日本語＋絵文字の進行表示を出す。
+- 設計: `internal/cli/progress.go` の `friendly`（slog.Handler）が既存ログを変換するだけ。capture/decode は logger 注入（`runCaptureWith` / `runDecodeWith`）以外変更なし。キャッチ検出は `--log-names` の message 名（fetchGameRecord / fetchSeerReport / oauth2Login の received）を利用し、payload・URL・個人情報は表示しない。`body_budget_limit` 等の body 状態警告は表示から抑制（private capture には従来どおり全記録）。
+- 既定 ON。従来の構造化ログは `mjcap ingest --plain`。
+
 ## 完了済み機能の落ち穂（優先度低・未着手）
 
 - NOTIFY(0x01) の実測 → envelope profile の notify 補完（ロビー通知が来るキャプチャ待ち）。

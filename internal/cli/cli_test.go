@@ -19,6 +19,8 @@ func TestArgumentsWithoutNetwork(t *testing.T) {
 		{[]string{"capture", "--help"}, 0, "log-names"},
 		{[]string{"capture", "--duration=-1s"}, 2, "invalid capture"},
 		{[]string{"capture", "--liqi-meta=missing"}, 2, "supplied together"},
+		{[]string{"ingest", "--help"}, 0, "plain"},
+		{[]string{"ingest", "unexpected"}, 2, "Usage:"},
 		{[]string{"inspect"}, 2, "Usage:"},
 		{[]string{"decode"}, 2, "Usage:"},
 		{[]string{"decode", "--liqi-meta=missing", "capture.jsonl"}, 2, "Usage:"},

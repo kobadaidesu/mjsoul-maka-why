@@ -79,6 +79,12 @@ func selfSeatFromHead(head protoreflect.Message, accountID uint64) *int {
 }
 
 func runDecode(args []string, stderr io.Writer) int {
+	return runDecodeWith(args, stderr, nil)
+}
+
+// runDecodeWith lets ingest inject its own logger (the friendly progress
+// view); logger == nil keeps the plain text logs.
+func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	uuid := fs.String("game-uuid", "", "only decode the record with this game uuid")
@@ -96,7 +102,9 @@ func runDecode(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: mjcap decode --liqi-meta FILE --protocol FILE [--game-uuid UUID] [--out FILE] CAPTURE.jsonl")
 		return 2
 	}
-	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(stderr, nil))
+	}
 	n, meta, err := names.load(logger)
 	if err != nil || n == nil {
 		logger.Error("load decode evidence", "error", err)

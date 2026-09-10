@@ -22,6 +22,7 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	profile := fs.String("protocol", "", "CONFIRMED envelope profile (default: the single file under .cache/mjcap/protocol/)")
 	gamesDir := fs.String("games-dir", filepath.Join("data", "games"), "private directory that stores decoded games")
 	duration := fs.Duration("duration", 0, "stop capturing after this duration; 0 waits for Ctrl-C")
+	plain := fs.Bool("plain", false, "structured text logs instead of the friendly progress view")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -29,10 +30,17 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "Usage: mjcap ingest [--endpoint URL] [--liqi-meta FILE --protocol FILE] [--games-dir DIR] [--duration D]")
+		fmt.Fprintln(stderr, "Usage: mjcap ingest [--endpoint URL] [--liqi-meta FILE --protocol FILE] [--games-dir DIR] [--duration D] [--plain]")
 		return 2
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	var ui *friendly
+	if !*plain {
+		ui = &friendly{w: stderr}
+		logger = slog.New(friendlyHandler{ui})
+		fmt.Fprintln(stderr, "🀄 雀魂スキャン — mjcap ingest")
+		fmt.Fprintln(stderr, "──────────────────────────────")
+	}
 	metaPath, err := resolveEvidencePath(*meta, filepath.Join(".cache", "mjcap", "liqi", "*.meta.json"), "--liqi-meta", "run `mjcap fetch-proto --cache-dir .cache/mjcap/liqi` first")
 	if err != nil {
 		logger.Error("resolve liqi metadata", "error", err)
@@ -49,11 +57,24 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	if *duration > 0 {
 		captureArgs = append(captureArgs, "--duration", duration.String())
 	}
-	if code := runCapture(ctx, captureArgs, stderr); code != 0 {
+	// The friendly view needs the per-message name log (names only, no
+	// payloads) to show "caught a record / a MAKA report" as it happens.
+	var inner *slog.Logger
+	if ui != nil {
+		captureArgs = append(captureArgs, "--log-names")
+		inner = logger
+	}
+	if code := runCaptureWith(ctx, captureArgs, stderr, inner); code != 0 {
 		return code
 	}
 	logger.Info("ingest: decoding capture", "capture", capturePath)
-	return runDecode([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", *gamesDir, capturePath}, stderr)
+	code := runDecodeWith([]string{"--liqi-meta", metaPath, "--protocol", profilePath, "--games-dir", *gamesDir, capturePath}, stderr, inner)
+	if ui != nil && code == 0 {
+		fmt.Fprintln(stderr, "──────────────────────────────")
+		fmt.Fprintf(stderr, "🎉 取り込み完了！保存した牌譜: %d 件\n", ui.storedGames())
+		fmt.Fprintln(stderr, "   Claude に「最新のゲームのミスを解説して」と聞いてみてね")
+	}
+	return code
 }
 
 // resolveEvidencePath returns the explicit path, or the unique glob match.

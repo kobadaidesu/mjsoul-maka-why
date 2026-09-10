@@ -89,6 +89,12 @@ func nameLogger(logger *slog.Logger, n *decode.Names, meta *liqi.Metadata, enabl
 }
 
 func runCapture(ctx context.Context, args []string, stderr io.Writer) (code int) {
+	return runCaptureWith(ctx, args, stderr, nil)
+}
+
+// runCaptureWith lets ingest inject its own logger (the friendly progress
+// view); logger == nil keeps the plain text logs and the --debug flag.
+func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger *slog.Logger) (code int) {
 	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	endpoint := fs.String("endpoint", "http://127.0.0.1:9222", "existing Chrome debug endpoint")
@@ -122,11 +128,13 @@ func runCapture(ctx context.Context, args []string, stderr io.Writer) (code int)
 			return 2
 		}
 	}
-	level := slog.LevelInfo
-	if *debug {
-		level = slog.LevelDebug
+	if logger == nil {
+		level := slog.LevelInfo
+		if *debug {
+			level = slog.LevelDebug
+		}
+		logger = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 	}
-	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 	n, meta, err := names.load(logger)
 	if err != nil {
 		logger.Error("load name evidence", "error", err)
