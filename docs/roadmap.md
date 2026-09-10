@@ -100,7 +100,7 @@ capture (CDP観測, internal/capture)
 
 ### ⑧ ingest の HTTP body 追加取得を既定で無効化 — branch `feature/ingest-http-bodies`
 
-状態: **実装・コード/自動検証の検収完了（実機検収待ち・未マージ）**（2026-09-10 設計担当が 47f4fa5 の差分・テスト生出力を検収）
+状態: **実装・コード/自動検証の検収完了（実機検収待ち）**（2026-09-10 設計担当が 47f4fa5 の差分・テスト生出力を検収）。取り込み先: [PR #15](https://github.com/kobadaidesu/mjsoul-maka-why/pull/15)
 
 - 実装: `--http-bodies` を capture（既定 true）と ingest（既定 false）に追加。無効時は getResponseBody を一切発行せず、http_metadata は `body_status: "disabled"` で保存（URLPattern/selected より優先）。WebSocket・metadata・loadingFinished/Failed・遅着 CDP reply は従来どおり raw 完全保持。設定は capture_context の `http_bodies`（false でも省略しない）に記録。`ingest --http-bodies` で従来動作へ再有効化。
 - 自動検証（合成テスト、2026-09-10）: 無効時 body 要求 0・pending/responses 追加 0、raw params/result の bytes 単位一致、WS イベントの有効/無効間一致、http_bodies 設定の異なる合成 capture を実 offline decoder に通した非空応答の完全一致、同一イベント列で無効側の合成 JSONL 3615→3198 bytes・body 要求 1→0（この実行での値であり実データの削減率ではない）、実 flag parse と runIngest→capture 受け渡し境界、旧 capture_context の後方互換、disabled の警告抑制、既存 budget/oversize 系の維持。
