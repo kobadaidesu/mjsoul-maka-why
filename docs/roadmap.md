@@ -107,6 +107,18 @@ capture (CDP観測, internal/capture)
 - 実機未確認: 削減後の実 capture サイズは未実測。根拠の実測値（2026-09-10 集計、MB は 10^6 バイト。尺度に注意: 以下は JSONL 行サイズ基準で、payload 実バイトとは別尺度）: 71 秒の capture の JSONL 全体 32.2MB、うち http_response 行の合計 28.9MB・websocket 行の合計 0.5MB。websocket の payload 実バイト合計は 0.15MB。budget は予約込み判定のため「128MiB 取得済み」の意味ではない。body 追加取得分の削減を見込むが、絶対サイズは保証しない。
 - 検収手順（次回の手動 ingest 時、下記の①⑥手順と同時に実施可）: `./scripts/maka` → 牌譜+MAKA を開く → Ctrl-C 後、(a) capture 冒頭の capture_context に `"http_bodies":false` があること、(b) http_metadata が `"body_status":"disabled"` で、getResponseBody 由来の body 保存（`body_base64` 付き `http_response`）が無いこと — 遅着 `cdp_reply` の `CDPResult` 保持は正常であり不合格条件にしない、(c) `[rx]` 受信・MAKA 結合・保存が従来どおりであること、(d) capture ファイルサイズを従来（30MB 級）と比較して記録すること。
 
+### ⑨ CLI 内部整理 — branch `feature/cli-refactor`
+
+状態: **コード・自動検証の検収完了**（2026-09-10 設計担当が `dcab2e8` の差分・テスト生出力を検収。外部挙動・保存 JSON・終了コード・既存ログ文言は不変。例外: plain ログの対応行に `cli_event` 属性が追加される）。取り込み先: [PR #16](https://github.com/kobadaidesu/mjsoul-maka-why/pull/16)
+
+- 検収済みの自動検証: 合成 capture の到着順（report→game→login でも正規化 JSON が完全一致）、保存 JSON と `--out` の内容一致、保存時刻が当該 game response イベントと完全一致、store/`--out` の 0600、通常ログ・正規化 JSON への識別子非露出、`--out` 拒否時の既存 bytes 保持、後続 game 失敗時の先行保存維持、並列 runner の独立、固定 `cli_event` による表示分類（文言変更耐性・旧文言非分類・実経路）。
+
+- 内容（3 件、詳細は decisions.md 2026-09-10）:
+  1. ingest の capture 実行依存を関数引数で注入（可変グローバル `runCaptureFn` を廃止）。並列に独立実行しても共有状態がないことをテストで確認。
+  2. decode を引数処理 / capture 収集 / 結合と順次保存 / JSON 出力に分割。逐次 join→store と後続失敗時の先行保存維持、open/close のエラー境界は従来どおり。合成 capture（wire フレーム + 実 evidence ファイル）で CLI 実経路の end-to-end 試験を追加。
+  3. 進行表示を英語ログ文言への完全一致から `cli_event` 属性（固定 CLI 識別子）に置き換え。発行側 → handler の実経路試験で識別子の付与漏れを検知。
+- 未確認: capture の成功系 emitter（opened/ready/stopped/interrupted）の発行 → handler の実経路試験は今回未実施（実施済みなのは表示処理の合成試験・発行箇所の差分確認・失敗系 discover の実経路まで）。次回の実機 ingest（①⑥⑧の検収手順）で進行表示が従来どおり出ることを確認する。
+
 ## 未検収項目と手動検収手順（次回の実取り込み時に実施）
 
 対象: ①の実牌譜保存、⑥の実機 `[rx]` 受信行、⑧の実機削減効果。ユーザーの手動操作が必要（ゲーム通信の自動操作は憲法により禁止）。

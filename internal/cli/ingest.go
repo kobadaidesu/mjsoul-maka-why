@@ -11,14 +11,21 @@ import (
 	"time"
 )
 
-// runCaptureFn exists so tests can intercept the exact arguments ingest
-// hands to capture; production always uses runCaptureWith.
-var runCaptureFn = runCaptureWith
+// captureRunner is the capture invocation ingest depends on. Production
+// passes runCaptureWith; tests pass a recorder to observe the exact argv
+// without any shared mutable state between test runs.
+type captureRunner func(ctx context.Context, args []string, stderr io.Writer, logger *slog.Logger) int
 
-// runIngest chains the existing observe-only capture with offline decode and
-// store: attach, let the user open replays + MAKA manually, Ctrl-C, decode.
-// It adds no protocol knowledge of its own.
+// runIngest is the thin production entry; the body takes its capture
+// dependency as an argument.
 func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
+	return runIngestWith(ctx, args, stderr, runCaptureWith)
+}
+
+// runIngestWith chains the existing observe-only capture with offline decode
+// and store: attach, let the user open replays + MAKA manually, Ctrl-C,
+// decode. It adds no protocol knowledge of its own.
+func runIngestWith(ctx context.Context, args []string, stderr io.Writer, runner captureRunner) int {
 	fs := flag.NewFlagSet("ingest", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	endpoint := fs.String("endpoint", "http://127.0.0.1:9222", "existing Chrome debug endpoint")
@@ -64,7 +71,7 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 		inner = logger
 	}
 	captureArgs := ingestCaptureArgs(*endpoint, capturePath, metaPath, profilePath, *duration, ui != nil, *httpBodies)
-	if code := runCaptureFn(ctx, captureArgs, stderr, inner); code != 0 {
+	if code := runner(ctx, captureArgs, stderr, inner); code != 0 {
 		return code
 	}
 	logger.Info("ingest: decoding capture", "capture", capturePath)

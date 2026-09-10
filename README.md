@@ -79,7 +79,7 @@ cache（既定 `os.UserCacheDir()/mjcap/liqi/`、`--cache-dir` で変更可）�
 capture → decode → 保存を 1 コマンドにしたものです（上のクイックスタート参照）。
 `--liqi-meta` / `--protocol` は `.cache/mjcap/liqi/` と `.cache/mjcap/protocol/` にファイルがちょうど 1 つずつあれば自動選択し、複数あるときは明示指定を要求します（推測で選ばない）。
 
-既定では工程が分かる進行表示（`[ok] 接続` → `[..] スキャン中` → `[rx] 牌譜/MAKA 受信` → `[ok] 復元/保存`）を出します。表示するのは既存ログと同じ message 名・件数・保存パスのみで、payload や個人情報は含みません。従来の構造化ログが必要なら `--plain` を付けてください。
+既定では工程が分かる進行表示（`[ok] 接続` → `[..] スキャン中` → `[rx] 牌譜/MAKA 受信` → `[ok] 復元/保存`）を出します。表示するのは既存ログと同じ message 名・件数・保存パスのみで、payload や個人情報は含みません。従来の構造化ログが必要なら `--plain` を付けてください（進行表示に対応するログ行にのみ、分類用の `cli_event` 属性が付きます。固定の CLI 内部識別子で、payload・URL・個人情報は含みません）。
 
 ingest は既定で HTTP レスポンス body の追加取得をしません（`--http-bodies` で capture と同じ従来動作に戻せます）。牌譜と MAKA は WebSocket 経由で、decode は HTTP body を読まないためです。WebSocket・HTTP メタデータ・受信済みイベントは従来どおりすべて記録され、影響は今後の capture のみです（既存 capture は変更しません）。
 
