@@ -71,7 +71,7 @@ capture (CDP観測, internal/capture)
 
 ### ⑥ ingest の親しみやすい進行表示 — branch `feature/ingest-friendly-ui`
 
-状態: **完了（main へマージ済み）**（実 Chrome で接続〜失敗案内まで表示確認。実牌譜でも受信行を確認）
+状態: **完了（main へマージ済み）**（実 Chrome で接続〜失敗案内まで表示確認。実牌譜での [rx] 受信行は未確認 — 次回取り込みで確認）
 
 - 目的: `maka`（= `mjcap ingest`）実行時に、工程（接続 / スキャン中 / 牌譜・MAKA 受信 / 解析 / 保存）が `[ok]` / `[..]` / `[rx]` / `[!!]` / `[err]` のステータスタグで分かる進行表示を出す。
 - 設計: `internal/cli/progress.go` の `friendly`（slog.Handler）が既存ログを変換するだけ。capture/decode は logger 注入（`runCaptureWith` / `runDecodeWith`）以外変更なし。キャッチ検出は `--log-names` の message 名（fetchGameRecord / fetchSeerReport / oauth2Login の received）を利用し、payload・URL・個人情報は表示しない。`body_budget_limit` 等の body 状態警告は表示から抑制（private capture には従来どおり全記録）。
