@@ -183,3 +183,11 @@ raw 保持の解釈: 「raw bytes を破棄しない」は受信済みの CDP pa
 却下: 小さい予算による擬似無効化（無効化と容量制限の意味が混同され、現行の正数バリデーションとも衝突）。selected の MIME 既定変更（未実測 transport への推測になり、調査用 capture の回帰を招く）。body_base64 / CDPResult の片方削除（保存形式と原本保持への影響が大きい。今回は取得を抑えることで両方の生成自体を防ぐ。片方削除・再構築・圧縮は別設計に分離し未実施）。
 
 HTTP body 有効時の二重保持・予算・raw 超過時保持（stored_over_limit）は維持する。将来は `ingest --http-bodies` または capture（既定 true）で手動再有効化でき、詳細選別は `--body-url-regexp` / `--max-body-bytes` / `--max-http-body-bytes` を使う。data_url は未実測・未対応のまま（この変更で decode の対応は増えない）。削減は今後の新規 capture のみで、サイズはイベント量に依存し上限は保証しない。
+
+## 2026-09-10: CLI 内部整理（ingest 依存注入 / decode 責務分割 / 進行表示のイベント識別子）
+
+採用: ingest の capture 実行依存を関数引数（`runIngestWith` + `captureRunner`）で渡し、テスト用の可変パッケージグローバルを廃止する。理由: 実行単位で依存を閉じ、テスト間の干渉を避けるため（現時点で実際の race 障害が確認されたという意味ではない）。却下: 汎用 DI 基盤。依存が少なく関数引数で十分なため。
+
+採用: decode の引数処理（`parseDecodeFlags`）・capture 収集（`collectCaptureGames`）・結果結合と順次保存（`joinAndStoreGames`）・JSON 出力（`writeGamesOutput`）を CLI 内部の補助関数に分ける。理由: 責務を追いやすくしつつ、プロトコル処理を既存 decode/extract に保つため。capture の open/close とそのエラー報告は従来の境界（呼び出し側）のまま。却下: パイプライン全面刷新と一括保存への変更。処理順（全収集 → ゲームごとに結合 → 即保存）と失敗時の部分保存を変えるため。
+
+採用: 進行表示は固定の CLI イベント属性（`cli_event`、`internal/cli/progress.go` の定数）で分類し、既存ログ文言を表示契約から切り離す。理由: 英文修正だけで表示が消えることを防ぐため。plain ログは既存文言・既存属性に識別子が加わるだけで、属性には payload・URL・識別子を入れない。イベント識別子はゲームプロトコルの enum ではない。却下: 文言逆引き表（文言依存が残る）、独自イベントバス（過剰）。
