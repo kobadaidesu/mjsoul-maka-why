@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -297,6 +298,163 @@ func TestReadOnlyCommandGuardAndSinkFailure(t *testing.T) {
 func TestReadRecordLimit(t *testing.T) {
 	if _, err := readRecord(bufio.NewReader(strings.NewReader("0123456789\n")), 8); err == nil {
 		t.Fatal("record limit ignored")
+	}
+}
+
+// replayFixture drives one observer over the fixture packets. The stored
+// body reply (ID 100) is delivered only when the observer actually issued a
+// body request, mirroring a real transport where no request means no reply.
+func replayFixture(t *testing.T, policy BodyPolicy) (*memorySink, *observer, int) {
+	t.Helper()
+	sink := &memorySink{}
+	calls := 0
+	o := newObserver(sink, policy, nil, func(method string, p any) (int64, error) {
+		if method != network.CommandGetResponseBody {
+			t.Fatalf("unexpected command %s", method)
+		}
+		calls++
+		return 100, nil
+	})
+	for _, msg := range fixturePackets(t) {
+		if msg.ID == 100 && calls == 0 {
+			continue
+		}
+		if err := o.handle(&msg, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return sink, o, calls
+}
+
+func TestDisabledHTTPBodiesNeverRequests(t *testing.T) {
+	// URLPattern matches the fixture Fetch request, so this also proves the
+	// disable takes precedence over both selected() and the URL pattern.
+	policy := BodyPolicy{MaxBodyBytes: 1024, MaxTotalBytes: 4096, URLPattern: regexp.MustCompile("record"), DisableHTTPBodies: true}
+	sink, o, calls := replayFixture(t, policy)
+	if calls != 0 || len(o.responses) != 0 || len(o.pending) != 0 {
+		t.Fatalf("disabled policy issued requests: calls=%d responses=%d pending=%d", calls, len(o.responses), len(o.pending))
+	}
+	packets := fixturePackets(t)
+	var kinds []string
+	for _, e := range sink.events {
+		kinds = append(kinds, e.Kind)
+		if e.Kind == "http_metadata" && e.BodyStatus != "disabled" && e.RequestID == "http-a" {
+			t.Fatalf("selected response status %q, want disabled", e.BodyStatus)
+		}
+	}
+	// HTTP metadata/finished raw params must be byte-identical to the
+	// original CDP messages, in arrival order.
+	for eventIndex, packetIndex := range map[int]int{5: 5, 6: 6, 7: 8, 8: 9} {
+		if !bytes.Equal(sink.events[eventIndex].CDPParams, packets[packetIndex].Params) {
+			t.Fatalf("event %d raw differs from packet %d", eventIndex, packetIndex)
+		}
+	}
+	// Metadata and finished events stay in arrival order; no http_response
+	// events exist because no bodies were ever requested.
+	// Index 3 is the fixture's invalid-base64 frame, retained as cdp_event.
+	want := []string{"websocket_open", "websocket", "websocket", "cdp_event", "websocket_close", "http_metadata", "http_finished", "http_metadata", "http_finished", "cdp_event"}
+	if len(kinds) != len(want) {
+		t.Fatalf("event kinds %v", kinds)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("event order %v, want %v", kinds, want)
+		}
+	}
+}
+
+func TestDisabledHTTPBodiesKeepsLateRepliesAndFailures(t *testing.T) {
+	sink := &memorySink{}
+	o := newObserver(sink, BodyPolicy{MaxBodyBytes: 1024, MaxTotalBytes: 4096, DisableHTTPBodies: true}, nil,
+		func(string, any) (int64, error) { t.Fatal("body requested"); return 0, nil })
+	packets := fixturePackets(t)
+	if err := o.handle(&packets[5], true); err != nil { // responseReceived http-a
+		t.Fatal(err)
+	}
+	failed := cdproto.Message{Method: "Network.loadingFailed", Params: []byte(`{"requestId":"http-a","errorText":"synthetic"}`)}
+	if err := o.handle(&failed, true); err != nil {
+		t.Fatal(err)
+	}
+	// A reply that still arrives (late, unmatched) keeps its exact result
+	// bytes; the recorded raw must equal the original message verbatim.
+	if err := o.handle(&packets[7], true); err != nil {
+		t.Fatal(err)
+	}
+	metadataEvent := sink.events[0]
+	if metadataEvent.Kind != "http_metadata" || !bytes.Equal(metadataEvent.CDPParams, packets[5].Params) {
+		t.Fatalf("responseReceived raw not identical: %s", metadataEvent.CDPParams)
+	}
+	failedEvent := sink.events[1]
+	if failedEvent.Kind != "http_failed" || failedEvent.BodyStatus != "loading_failed" || !bytes.Equal(failedEvent.CDPParams, []byte(failed.Params)) {
+		t.Fatal("loadingFailed raw not identical under disabled policy")
+	}
+	last := sink.events[2]
+	if last.Kind != "cdp_reply" || !bytes.Equal(last.CDPResult, []byte(packets[7].Result)) {
+		t.Fatalf("late reply raw not identical: %s vs %s", last.CDPResult, packets[7].Result)
+	}
+	if err := o.expire(time.Now(), true); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.events) != 3 {
+		t.Fatalf("expire emitted tracked responses under disabled policy: %d events", len(sink.events))
+	}
+}
+
+func TestDisabledCaptureIsSmallerWithIdenticalWebsocketRaw(t *testing.T) {
+	base := BodyPolicy{MaxBodyBytes: 1024, MaxTotalBytes: 4096}
+	disabledPolicy := base
+	disabledPolicy.DisableHTTPBodies = true
+	enabledSink, _, enabledCalls := replayFixture(t, base)
+	disabledSink, _, disabledCalls := replayFixture(t, disabledPolicy)
+	if enabledCalls != 1 || disabledCalls != 0 {
+		t.Fatalf("calls enabled=%d disabled=%d", enabledCalls, disabledCalls)
+	}
+	size := func(events []Event) int {
+		total := 0
+		for _, e := range events {
+			raw, err := json.Marshal(e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			total += len(raw)
+		}
+		return total
+	}
+	if size(disabledSink.events) >= size(enabledSink.events) {
+		t.Fatalf("disabled capture not smaller: %d vs %d", size(disabledSink.events), size(enabledSink.events))
+	}
+	ws := func(events []Event) []Event {
+		var out []Event
+		for _, e := range events {
+			if strings.HasPrefix(e.Kind, "websocket") {
+				e.Seq, e.CapturedAt = 0, time.Time{}
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	a, b := ws(enabledSink.events), ws(disabledSink.events)
+	if len(a) != len(b) {
+		t.Fatalf("websocket event counts differ: %d vs %d", len(a), len(b))
+	}
+	for i := range a {
+		ra, _ := json.Marshal(a[i])
+		rb, _ := json.Marshal(b[i])
+		if !bytes.Equal(ra, rb) {
+			t.Fatalf("websocket raw differs at %d: %s vs %s", i, ra, rb)
+		}
+	}
+	stored := func(events []Event) int {
+		n := 0
+		for _, e := range events {
+			if e.BodyBase64 != nil {
+				n++
+			}
+		}
+		return n
+	}
+	if stored(enabledSink.events) != 1 || stored(disabledSink.events) != 0 {
+		t.Fatalf("stored bodies enabled=%d disabled=%d", stored(enabledSink.events), stored(disabledSink.events))
 	}
 }
 

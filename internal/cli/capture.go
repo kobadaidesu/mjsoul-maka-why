@@ -55,7 +55,9 @@ func (o *nameOptions) load(logger *slog.Logger) (*decode.Names, *liqi.Metadata, 
 
 func nameLogger(logger *slog.Logger, n *decode.Names, meta *liqi.Metadata, enabled bool) func(capture.Event) {
 	return func(e capture.Event) {
-		if e.BodyStatus != "" && e.BodyStatus != "stored" && e.BodyStatus != "not_selected" && e.BodyStatus != "awaiting_loading_finished" {
+		// "disabled" is the normal state under --http-bodies=false, not a
+		// per-request problem, so it must not warn on every HTTP response.
+		if e.BodyStatus != "" && e.BodyStatus != "stored" && e.BodyStatus != "not_selected" && e.BodyStatus != "awaiting_loading_finished" && e.BodyStatus != "disabled" {
 			logger.Warn("HTTP body observation status", "seq", e.Seq, "request_id", e.RequestID, "body_status", e.BodyStatus)
 		}
 		if e.Error != "" {
@@ -92,73 +94,94 @@ func runCapture(ctx context.Context, args []string, stderr io.Writer) (code int)
 	return runCaptureWith(ctx, args, stderr, nil)
 }
 
+// captureOptions is the parsed CLI surface of the capture subcommand. It is
+// produced only by parseCaptureFlags so tests exercise the real flag parsing
+// (defaults included) rather than a parallel construction path.
+type captureOptions struct {
+	endpoint, targetID, host, out string
+	remote, debug, httpBodies     bool
+	duration                      time.Duration
+	maxBody, maxTotal             int64
+	pattern                       string
+	policy                        capture.BodyPolicy
+	names                         nameOptions
+}
+
+// parseCaptureFlags returns nil with the exit code when parsing stops
+// (--help or invalid arguments).
+func parseCaptureFlags(args []string, stderr io.Writer) (*captureOptions, int) {
+	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	o := &captureOptions{}
+	fs.StringVar(&o.endpoint, "endpoint", "http://127.0.0.1:9222", "existing Chrome debug endpoint")
+	fs.BoolVar(&o.remote, "allow-remote-cdp", false, "explicitly permit a non-loopback debug endpoint")
+	fs.StringVar(&o.targetID, "target-id", "", "existing page target ID")
+	fs.StringVar(&o.host, "target-host", "game.mahjongsoul.com", "select the only existing page on this host")
+	fs.StringVar(&o.out, "out", "", "new private JSONL path (default: data/captures/capture-<UTC>.jsonl)")
+	fs.DurationVar(&o.duration, "duration", 0, "stop after this duration; 0 waits for Ctrl-C")
+	fs.Int64Var(&o.maxBody, "max-body-bytes", 32<<20, "maximum encoded response size eligible for body capture")
+	fs.Int64Var(&o.maxTotal, "max-http-body-bytes", 128<<20, "HTTP body budget per process")
+	fs.StringVar(&o.pattern, "body-url-regexp", "", "also retain received bodies matching this regexp; no requests generated")
+	fs.BoolVar(&o.httpBodies, "http-bodies", true, "request selected HTTP response bodies; false records metadata only (ingest's default)")
+	fs.BoolVar(&o.debug, "debug", false, "enable debug logs (raw remains private)")
+	o.names.flags(fs)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil, 0
+		}
+		return nil, 2
+	}
+	if fs.NArg() != 0 || o.duration < 0 || (o.host == "" && o.targetID == "") {
+		fmt.Fprintln(stderr, "invalid capture arguments or body budgets")
+		return nil, 2
+	}
+	policy, err := captureBodyPolicy(o.maxBody, o.maxTotal, o.pattern, o.httpBodies)
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid capture arguments or body budgets:", err)
+		return nil, 2
+	}
+	o.policy = policy
+	return o, 0
+}
+
 // runCaptureWith lets ingest inject its own logger (the friendly progress
 // view); logger == nil keeps the plain text logs and the --debug flag.
 func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger *slog.Logger) (code int) {
-	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	endpoint := fs.String("endpoint", "http://127.0.0.1:9222", "existing Chrome debug endpoint")
-	remote := fs.Bool("allow-remote-cdp", false, "explicitly permit a non-loopback debug endpoint")
-	id := fs.String("target-id", "", "existing page target ID")
-	host := fs.String("target-host", "game.mahjongsoul.com", "select the only existing page on this host")
-	out := fs.String("out", "", "new private JSONL path (default: data/captures/capture-<UTC>.jsonl)")
-	duration := fs.Duration("duration", 0, "stop after this duration; 0 waits for Ctrl-C")
-	maxBody := fs.Int64("max-body-bytes", 32<<20, "maximum encoded response size eligible for body capture")
-	maxTotal := fs.Int64("max-http-body-bytes", 128<<20, "HTTP body budget per process")
-	pattern := fs.String("body-url-regexp", "", "also retain received bodies matching this regexp; no requests generated")
-	debug := fs.Bool("debug", false, "enable debug logs (raw remains private)")
-	var names nameOptions
-	names.flags(fs)
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
-		return 2
-	}
-	if fs.NArg() != 0 || *duration < 0 || *maxBody <= 0 || *maxTotal < *maxBody || *maxTotal > 1<<30 || (*host == "" && *id == "") {
-		fmt.Fprintln(stderr, "invalid capture arguments or body budgets")
-		return 2
-	}
-	policy := capture.BodyPolicy{MaxBodyBytes: *maxBody, MaxTotalBytes: *maxTotal}
-	if *pattern != "" {
-		var err error
-		policy.URLPattern, err = regexp.Compile(*pattern)
-		if err != nil {
-			fmt.Fprintln(stderr, "invalid body URL regexp")
-			return 2
-		}
+	opts, code := parseCaptureFlags(args, stderr)
+	if opts == nil {
+		return code
 	}
 	if logger == nil {
 		level := slog.LevelInfo
-		if *debug {
+		if opts.debug {
 			level = slog.LevelDebug
 		}
 		logger = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 	}
-	n, meta, err := names.load(logger)
+	n, meta, err := opts.names.load(logger)
 	if err != nil {
 		logger.Error("load name evidence", "error", err)
 		return 2
 	}
-	if *duration > 0 {
+	if opts.duration > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, *duration)
+		ctx, cancel = context.WithTimeout(ctx, opts.duration)
 		defer cancel()
 	}
-	targets, err := capture.Discover(ctx, *endpoint, *remote)
+	targets, err := capture.Discover(ctx, opts.endpoint, opts.remote)
 	if err != nil {
 		logger.Error("discover Chrome", "error", err)
 		return 1
 	}
-	target, err := capture.SelectTarget(targets, *id, *host, *endpoint, *remote)
+	target, err := capture.SelectTarget(targets, opts.targetID, opts.host, opts.endpoint, opts.remote)
 	if err != nil {
 		logger.Error("select existing tab", "error", err)
 		return 1
 	}
-	if *out == "" {
-		*out = filepath.Join("data", "captures", "capture-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".jsonl")
+	if opts.out == "" {
+		opts.out = filepath.Join("data", "captures", "capture-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".jsonl")
 	}
-	j, err := capture.NewJournal(*out)
+	j, err := capture.NewJournal(opts.out)
 	if err != nil {
 		logger.Error("open private capture", "error", err)
 		return 1
@@ -174,15 +197,7 @@ func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger
 		p := n.Evidence()
 		evidence = &p
 	}
-	details, err := json.Marshal(struct {
-		Target       capture.Target  `json:"target"`
-		Liqi         *liqi.Metadata  `json:"liqi,omitempty"`
-		ProtocolFile string          `json:"protocol_file,omitempty"`
-		Protocol     *decode.Profile `json:"protocol,omitempty"`
-		MaxBody      int64           `json:"max_body_bytes"`
-		MaxTotal     int64           `json:"max_http_body_bytes"`
-		BodyPattern  string          `json:"body_url_regexp,omitempty"`
-	}{target, meta, names.profile, evidence, *maxBody, *maxTotal, *pattern})
+	details, err := encodeCaptureContext(target, meta, opts.names.profile, evidence, opts.maxBody, opts.maxTotal, opts.pattern, opts.httpBodies)
 	if err != nil {
 		logger.Error("encode capture context", "error", err)
 		return 1
@@ -191,14 +206,48 @@ func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger
 		logger.Error("save capture context", "error", err)
 		return 1
 	}
-	logger.Info("private capture opened", "path", *out, "target_id", target.ID)
-	err = capture.Observe(ctx, target, j, policy, nameLogger(logger, n, meta, names.log), func() { logger.Info("capture ready: perform replay/MAKA actions manually", "path", *out) })
+	logger.Info("private capture opened", "path", opts.out, "target_id", target.ID)
+	err = capture.Observe(ctx, target, j, opts.policy, nameLogger(logger, n, meta, opts.names.log), func() { logger.Info("capture ready: perform replay/MAKA actions manually", "path", opts.out) })
 	if err != nil {
-		logger.Error("capture interrupted; saved raw retained", "error", err, "path", *out)
+		logger.Error("capture interrupted; saved raw retained", "error", err, "path", opts.out)
 		return 1
 	}
-	logger.Info("capture stopped", "path", *out)
+	logger.Info("capture stopped", "path", opts.out)
 	return 0
+}
+
+// captureBodyPolicy maps the capture CLI flags onto the observer policy.
+// --http-bodies=false becomes the opt-out DisableHTTPBodies so a zero-value
+// BodyPolicy keeps its historical meaning. Budget validation is unchanged.
+func captureBodyPolicy(maxBody, maxTotal int64, pattern string, httpBodies bool) (capture.BodyPolicy, error) {
+	if maxBody <= 0 || maxTotal < maxBody || maxTotal > 1<<30 {
+		return capture.BodyPolicy{}, fmt.Errorf("body budgets out of range")
+	}
+	policy := capture.BodyPolicy{MaxBodyBytes: maxBody, MaxTotalBytes: maxTotal, DisableHTTPBodies: !httpBodies}
+	if pattern != "" {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return capture.BodyPolicy{}, fmt.Errorf("invalid body URL regexp")
+		}
+		policy.URLPattern = re
+	}
+	return policy, nil
+}
+
+// encodeCaptureContext records the capture settings alongside the evidence
+// binding. http_bodies is written even when false so later inspection can
+// tell an intentionally body-less capture from a pre-flag one.
+func encodeCaptureContext(target capture.Target, meta *liqi.Metadata, protocolFile string, evidence *decode.Profile, maxBody, maxTotal int64, pattern string, httpBodies bool) ([]byte, error) {
+	return json.Marshal(struct {
+		Target       capture.Target  `json:"target"`
+		Liqi         *liqi.Metadata  `json:"liqi,omitempty"`
+		ProtocolFile string          `json:"protocol_file,omitempty"`
+		Protocol     *decode.Profile `json:"protocol,omitempty"`
+		MaxBody      int64           `json:"max_body_bytes"`
+		MaxTotal     int64           `json:"max_http_body_bytes"`
+		BodyPattern  string          `json:"body_url_regexp,omitempty"`
+		HTTPBodies   bool            `json:"http_bodies"`
+	}{target, meta, protocolFile, evidence, maxBody, maxTotal, pattern, httpBodies})
 }
 
 func runInspect(args []string, stderr io.Writer) int {
