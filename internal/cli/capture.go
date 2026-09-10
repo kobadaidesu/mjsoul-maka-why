@@ -58,10 +58,10 @@ func nameLogger(logger *slog.Logger, n *decode.Names, meta *liqi.Metadata, enabl
 		// "disabled" is the normal state under --http-bodies=false, not a
 		// per-request problem, so it must not warn on every HTTP response.
 		if e.BodyStatus != "" && e.BodyStatus != "stored" && e.BodyStatus != "not_selected" && e.BodyStatus != "awaiting_loading_finished" && e.BodyStatus != "disabled" {
-			logger.Warn("HTTP body observation status", "seq", e.Seq, "request_id", e.RequestID, "body_status", e.BodyStatus)
+			logger.Warn("HTTP body observation status", cliEventKey, cliEventBodyStatus, "seq", e.Seq, "request_id", e.RequestID, "body_status", e.BodyStatus)
 		}
 		if e.Error != "" {
-			logger.Warn("observation detail retained in private capture", "seq", e.Seq, "kind", e.Kind)
+			logger.Warn("observation detail retained in private capture", cliEventKey, cliEventObservationDetail, "seq", e.Seq, "kind", e.Kind)
 		}
 		if n == nil {
 			return
@@ -70,7 +70,7 @@ func nameLogger(logger *slog.Logger, n *decode.Names, meta *liqi.Metadata, enabl
 		if !enabled || e.Kind != "websocket" {
 			return
 		}
-		args := []any{"seq", v.Seq, "connection_id", v.ConnectionID, "direction", v.Direction, "decode_status", v.Status,
+		args := []any{cliEventKey, cliEventObservedMessage, "seq", v.Seq, "connection_id", v.ConnectionID, "direction", v.Direction, "decode_status", v.Status,
 			"game_version", meta.GameVersion, "liqi_resource_version", meta.ResourceVersion, "liqi_sha256", meta.SHA256}
 		if v.Number != nil {
 			args = append(args, "message_number", *v.Number)
@@ -170,12 +170,12 @@ func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger
 	}
 	targets, err := capture.Discover(ctx, opts.endpoint, opts.remote)
 	if err != nil {
-		logger.Error("discover Chrome", "error", err)
+		logger.Error("discover Chrome", cliEventKey, cliEventChromeDiscover, "error", err)
 		return 1
 	}
 	target, err := capture.SelectTarget(targets, opts.targetID, opts.host, opts.endpoint, opts.remote)
 	if err != nil {
-		logger.Error("select existing tab", "error", err)
+		logger.Error("select existing tab", cliEventKey, cliEventTabSelect, "error", err)
 		return 1
 	}
 	if opts.out == "" {
@@ -206,13 +206,15 @@ func runCaptureWith(ctx context.Context, args []string, stderr io.Writer, logger
 		logger.Error("save capture context", "error", err)
 		return 1
 	}
-	logger.Info("private capture opened", "path", opts.out, "target_id", target.ID)
-	err = capture.Observe(ctx, target, j, opts.policy, nameLogger(logger, n, meta, opts.names.log), func() { logger.Info("capture ready: perform replay/MAKA actions manually", "path", opts.out) })
+	logger.Info("private capture opened", cliEventKey, cliEventCaptureOpened, "path", opts.out, "target_id", target.ID)
+	err = capture.Observe(ctx, target, j, opts.policy, nameLogger(logger, n, meta, opts.names.log), func() {
+		logger.Info("capture ready: perform replay/MAKA actions manually", cliEventKey, cliEventCaptureReady, "path", opts.out)
+	})
 	if err != nil {
-		logger.Error("capture interrupted; saved raw retained", "error", err, "path", opts.out)
+		logger.Error("capture interrupted; saved raw retained", cliEventKey, cliEventCaptureInterrupted, "error", err, "path", opts.out)
 		return 1
 	}
-	logger.Info("capture stopped", "path", opts.out)
+	logger.Info("capture stopped", cliEventKey, cliEventCaptureStopped, "path", opts.out)
 	return 0
 }
 

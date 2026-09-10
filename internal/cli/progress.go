@@ -8,6 +8,29 @@ import (
 	"sync"
 )
 
+// cliEventKey and the cliEvent* constants are the stable contract between
+// the log emitters (capture/decode wiring) and the friendly progress view.
+// The English log text may change freely; the view keys on these
+// identifiers only. They are CLI implementation labels, not game-protocol
+// enums, and the attribute never carries payloads, URLs or identifiers.
+const cliEventKey = "cli_event"
+
+const (
+	cliEventCaptureOpened      = "capture_opened"
+	cliEventCaptureReady       = "capture_ready"
+	cliEventCaptureStopped     = "capture_stopped"
+	cliEventCaptureInterrupted = "capture_interrupted"
+	cliEventBodyStatus         = "http_body_status"
+	cliEventObservationDetail  = "observation_detail"
+	cliEventObservedMessage    = "observed_message"
+	cliEventGameReconstructed  = "game_reconstructed"
+	cliEventGameStored         = "game_stored"
+	cliEventNoGameRecord       = "no_game_record"
+	cliEventChromeDiscover     = "chrome_discover_failed"
+	cliEventTabSelect          = "tab_select_failed"
+	cliEventLoginReused        = "login_reused"
+)
+
 // friendly reformats the structured ingest logs into short status lines for
 // people watching the terminal. It only rewords records the existing loggers
 // already emit (message names, counts, stored paths); payloads, URLs and
@@ -34,12 +57,12 @@ func (f *friendly) storedGames() int {
 func (f *friendly) handle(level slog.Level, msg string, attrs map[string]string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	switch msg {
+	switch attrs[cliEventKey] {
 	// Per-request body bookkeeping (e.g. body_budget_limit from game assets)
 	// stays in the private capture; it does not affect the WebSocket record.
-	case "HTTP body observation status", "observation detail retained in private capture":
+	case cliEventBodyStatus, cliEventObservationDetail:
 		return
-	case "observed message":
+	case cliEventObservedMessage:
 		if attrs["direction"] != "received" {
 			return
 		}
@@ -54,18 +77,18 @@ func (f *friendly) handle(level slog.Level, msg string, attrs map[string]string)
 			f.print("[rx] ログイン応答を確認 (自席判定に使用)")
 		}
 		return
-	case "private capture opened":
+	case cliEventCaptureOpened:
 		f.print("[ok] Chrome の雀魂タブに接続")
 		return
-	case "capture ready: perform replay/MAKA actions manually":
+	case cliEventCaptureReady:
 		f.print("[..] スキャン中")
 		f.print("     牌譜を開いて MAKA を表示してください (複数件可)")
 		f.print("     終了するには Ctrl-C")
 		return
-	case "capture stopped":
+	case cliEventCaptureStopped:
 		f.print("[--] スキャン終了、解析を開始")
 		return
-	case "game record reconstructed":
+	case cliEventGameReconstructed:
 		f.print("[ok] 復元: 全%s局 / 判断 %s / MAKA 結合 %s",
 			attrs["rounds"], attrs["decisions"], attrs["maka_joined_decisions"])
 		if attrs["maka_report"] == "false" {
@@ -78,31 +101,32 @@ func (f *friendly) handle(level slog.Level, msg string, attrs map[string]string)
 			f.print("[!!] 復元時の注意 %s 件 (保存 JSON の issues を参照)", attrs["issues"])
 		}
 		return
-	case "self seat login reused from earlier capture":
+	case cliEventLoginReused:
 		f.print("[--] 自席判定: 過去の capture のログイン応答を再利用 (%s)", attrs["capture"])
 		return
-	case "game stored":
+	case cliEventGameStored:
 		f.stored++
 		f.print("[ok] 保存: %s", attrs["path"])
 		return
-	case "no matching game record response in capture":
+	case cliEventNoGameRecord:
 		f.print("[err] 牌譜が記録されていません")
 		f.print("      対処: 牌譜を開いて MAKA を表示してから Ctrl-C してください")
 		return
-	case "discover Chrome":
+	case cliEventChromeDiscover:
 		f.print("[err] Chrome (デバッグポート) に接続できません")
 		f.print("      対処: maka コマンドで専用 Chrome を起動してから再実行してください")
 		return
-	case "select existing tab":
+	case cliEventTabSelect:
 		f.print("[err] Chrome に雀魂のタブが見つかりません")
 		f.print("      対処: https://game.mahjongsoul.com/ を開いてから再実行してください")
 		return
-	case "capture interrupted; saved raw retained":
+	case cliEventCaptureInterrupted:
 		f.print("[!!] スキャン中断 (記録済みデータは保持: %s)", attrs["path"])
 		return
 	}
-	// Unmapped warnings/errors still surface so nothing fails silently;
-	// unmapped info-level chatter stays hidden.
+	// Records without a known event identifier still surface at warn/error
+	// so nothing fails silently; info-level chatter without one stays
+	// hidden. Legacy message text alone never classifies a record.
 	switch {
 	case level >= slog.LevelError:
 		f.print("[err] %s%s", msg, friendlyDetail(attrs))

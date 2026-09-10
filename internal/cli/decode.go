@@ -228,14 +228,14 @@ func joinAndStoreGames(logger *slog.Logger, pending []pendingGame, reports map[s
 				}
 			}
 		}
-		logger.Info("game record reconstructed", "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "self_seat_known", p.game.SelfSeat != nil, "issues", issues, "record_version", p.game.Version)
+		logger.Info("game record reconstructed", cliEventKey, cliEventGameReconstructed, "seq", p.seq, "rounds", len(p.game.Rounds), "decisions", decisions, "maka_joined_decisions", joined, "maka_report", p.game.MakaUUID != "", "self_seat_known", p.game.SelfSeat != nil, "issues", issues, "record_version", p.game.Version)
 		if gamesDir != "" {
 			path, err := store.Save(gamesDir, store.File{CapturedAt: p.capturedAt, Game: p.game})
 			if err != nil {
 				logger.Error("store game", "error", err)
 				return nil, 1
 			}
-			logger.Info("game stored", "path", path)
+			logger.Info("game stored", cliEventKey, cliEventGameStored, "path", path)
 		}
 		games = append(games, p.game)
 	}
@@ -308,7 +308,7 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 		return 1
 	}
 	if len(pending) == 0 {
-		logger.Error("no matching game record response in capture")
+		logger.Error("no matching game record response in capture", cliEventKey, cliEventNoGameRecord)
 		return 1
 	}
 	if len(loginIDs) == 0 && opts.loginDir != "" {
@@ -319,7 +319,7 @@ func runDecodeWith(args []string, stderr io.Writer, logger *slog.Logger) int {
 			loginIDs[id] = true
 		}
 		if len(ids) > 0 {
-			logger.Info("self seat login reused from earlier capture", "capture", filepath.Base(source))
+			logger.Info("self seat login reused from earlier capture", cliEventKey, cliEventLoginReused, "capture", filepath.Base(source))
 		}
 	}
 	games, code := joinAndStoreGames(logger, pending, reports, loginIDs, opts.gamesDir)
