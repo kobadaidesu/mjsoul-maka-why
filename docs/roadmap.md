@@ -98,9 +98,18 @@ capture (CDP観測, internal/capture)
 - 複数アカウント対策（共有ディレクトリ）: 席テーブルに一致した既知 ID がちょうど 1 件のときだけ採用。0 件・複数件は従来どおり不明。
 - ログには再利用元 capture のファイル名のみ出す。account_id は保存・ログ出力とも一切しない（憲法 §25/§45 維持）。
 
+### ⑧ ingest の HTTP body 追加取得を既定で無効化 — branch `feature/ingest-http-bodies`
+
+状態: **実装・コード/自動検証の検収完了（実機検収待ち）**（2026-09-10 設計担当が 47f4fa5 の差分・テスト生出力を検収）。取り込み先: [PR #15](https://github.com/kobadaidesu/mjsoul-maka-why/pull/15)
+
+- 実装: `--http-bodies` を capture（既定 true）と ingest（既定 false）に追加。無効時は getResponseBody を一切発行せず、http_metadata は `body_status: "disabled"` で保存（URLPattern/selected より優先）。WebSocket・metadata・loadingFinished/Failed・遅着 CDP reply は従来どおり raw 完全保持。設定は capture_context の `http_bodies`（false でも省略しない）に記録。`ingest --http-bodies` で従来動作へ再有効化。
+- 自動検証（合成テスト、2026-09-10）: 無効時 body 要求 0・pending/responses 追加 0、raw params/result の bytes 単位一致、WS イベントの有効/無効間一致、http_bodies 設定の異なる合成 capture を実 offline decoder に通した非空応答の完全一致、同一イベント列で無効側の合成 JSONL 3615→3198 bytes・body 要求 1→0（この実行での値であり実データの削減率ではない）、実 flag parse と runIngest→capture 受け渡し境界、旧 capture_context の後方互換、disabled の警告抑制、既存 budget/oversize 系の維持。
+- 実機未確認: 削減後の実 capture サイズは未実測。根拠の実測値（2026-09-10 集計、MB は 10^6 バイト。尺度に注意: 以下は JSONL 行サイズ基準で、payload 実バイトとは別尺度）: 71 秒の capture の JSONL 全体 32.2MB、うち http_response 行の合計 28.9MB・websocket 行の合計 0.5MB。websocket の payload 実バイト合計は 0.15MB。budget は予約込み判定のため「128MiB 取得済み」の意味ではない。body 追加取得分の削減を見込むが、絶対サイズは保証しない。
+- 検収手順（次回の手動 ingest 時、下記の①⑥手順と同時に実施可）: `./scripts/maka` → 牌譜+MAKA を開く → Ctrl-C 後、(a) capture 冒頭の capture_context に `"http_bodies":false` があること、(b) http_metadata が `"body_status":"disabled"` で、getResponseBody 由来の body 保存（`body_base64` 付き `http_response`）が無いこと — 遅着 `cdp_reply` の `CDPResult` 保持は正常であり不合格条件にしない、(c) `[rx]` 受信・MAKA 結合・保存が従来どおりであること、(d) capture ファイルサイズを従来（30MB 級）と比較して記録すること。
+
 ## 未検収項目と手動検収手順（次回の実取り込み時に実施）
 
-対象: ①の実牌譜保存、⑥の実機 `[rx]` 受信行。ユーザーの手動操作が必要（ゲーム通信の自動操作は憲法により禁止）。
+対象: ①の実牌譜保存、⑥の実機 `[rx]` 受信行、⑧の実機削減効果。ユーザーの手動操作が必要（ゲーム通信の自動操作は憲法により禁止）。
 
 手順:
 

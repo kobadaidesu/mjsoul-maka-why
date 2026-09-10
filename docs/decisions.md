@@ -173,3 +173,13 @@ web 版 LLM クライアントは stdio に接続できないため、`--listen`
 却下: main への取り込みをもって全受け入れ基準の達成とする案。理由: ingest の実牌譜保存と進行表示の実機受信行に未確認事項が残る。過去のテスト成功を現在 HEAD の検証結果として扱わない。
 
 プロトコル確認状態は変更しない。self_seat の照合実測（`ResLogin.account_id`）は decisions.md 2026-09-06 に記載があるが protocol-findings.md に日時・方法つきの記録が無いため、根拠補完を別途行う（roadmap ②の TODO(verify)）。
+
+## 2026-09-10: ingest の HTTP body 追加取得を既定で無効化
+
+採用: `--http-bodies` を設け、ingest は false、調査用 capture は true を既定とする。理由: 実測済みの牌譜/MAKA と現行 decode は WebSocket を使い、通常取り込みの HTTP body 追加取得を省くことで保存量を抑えられる。
+
+raw 保持の解釈: 「raw bytes を破棄しない」は受信済みの CDP params/result と transport bytes に適用する。追加取得前の HTTP body の選別は既存 BodyPolicy（selected/予算）と同じ事前選別であり、受信済み raw の破棄を許す解釈ではない。無効時も受信イベントと遅着応答は完全保持し、設定は capture_context の `http_bodies`（false でも記録）へ残す。
+
+却下: 小さい予算による擬似無効化（無効化と容量制限の意味が混同され、現行の正数バリデーションとも衝突）。selected の MIME 既定変更（未実測 transport への推測になり、調査用 capture の回帰を招く）。body_base64 / CDPResult の片方削除（保存形式と原本保持への影響が大きい。今回は取得を抑えることで両方の生成自体を防ぐ。片方削除・再構築・圧縮は別設計に分離し未実施）。
+
+HTTP body 有効時の二重保持・予算・raw 超過時保持（stored_over_limit）は維持する。将来は `ingest --http-bodies` または capture（既定 true）で手動再有効化でき、詳細選別は `--body-url-regexp` / `--max-body-bytes` / `--max-http-body-bytes` を使う。data_url は未実測・未対応のまま（この変更で decode の対応は増えない）。削減は今後の新規 capture のみで、サイズはイベント量に依存し上限は保証しない。

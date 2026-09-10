@@ -20,6 +20,11 @@ type BodyPolicy struct {
 	MaxBodyBytes  int64
 	MaxTotalBytes int64
 	URLPattern    *regexp.Regexp
+	// DisableHTTPBodies stops the observer from ever requesting HTTP response
+	// bodies (getResponseBody). Metadata, loadingFinished/Failed and every
+	// already-received CDP message are still recorded unchanged; this is a
+	// pre-fetch selection like selected(), not a discard of received raw.
+	DisableHTTPBodies bool
 }
 
 func (p BodyPolicy) selected(e Event) bool {
@@ -140,7 +145,11 @@ func (o *observer) handle(msg *cdproto.Message, commands bool) error {
 		}
 		e.Kind, e.URL, e.Status, e.MIMEType, e.ResourceType = "http_metadata", meta.Response.URL, int64(meta.Response.Status), meta.Response.MIME, meta.Type
 		e.BodyStatus = "not_selected"
-		if o.policy.selected(e) {
+		if o.policy.DisableHTTPBodies {
+			// Takes precedence over URLPattern/selected: no body request is
+			// ever issued and nothing is tracked for a later fetch.
+			e.BodyStatus = "disabled"
+		} else if o.policy.selected(e) {
 			e.BodyStatus = "awaiting_loading_finished"
 			if len(o.responses) >= 4096 {
 				e.BodyStatus = "metadata_limit"

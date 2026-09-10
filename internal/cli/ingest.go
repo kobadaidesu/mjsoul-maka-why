@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+// runCaptureFn exists so tests can intercept the exact arguments ingest
+// hands to capture; production always uses runCaptureWith.
+var runCaptureFn = runCaptureWith
+
 // runIngest chains the existing observe-only capture with offline decode and
 // store: attach, let the user open replays + MAKA manually, Ctrl-C, decode.
 // It adds no protocol knowledge of its own.
@@ -24,6 +28,7 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	duration := fs.Duration("duration", 0, "stop capturing after this duration; 0 waits for Ctrl-C")
 	plain := fs.Bool("plain", false, "structured text logs instead of the friendly progress view")
 	reuseLogin := fs.Bool("reuse-login", true, "when this scan has no login, resolve the self seat from an earlier capture's login response (ids stay in memory, never stored or logged)")
+	httpBodies := fs.Bool("http-bodies", false, "also request selected HTTP response bodies like the capture subcommand; the record and MAKA arrive over WebSocket, so ingest skips bodies by default")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -54,18 +59,12 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 	capturePath := filepath.Join("data", "captures", "capture-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".jsonl")
 	logger.Info("ingest: capturing; open the replays and their MAKA views now, then press Ctrl-C", "capture", capturePath)
-	captureArgs := []string{"--endpoint", *endpoint, "--out", capturePath, "--liqi-meta", metaPath, "--protocol", profilePath}
-	if *duration > 0 {
-		captureArgs = append(captureArgs, "--duration", duration.String())
-	}
-	// The friendly view needs the per-message name log (names only, no
-	// payloads) to show "caught a record / a MAKA report" as it happens.
 	var inner *slog.Logger
 	if ui != nil {
-		captureArgs = append(captureArgs, "--log-names")
 		inner = logger
 	}
-	if code := runCaptureWith(ctx, captureArgs, stderr, inner); code != 0 {
+	captureArgs := ingestCaptureArgs(*endpoint, capturePath, metaPath, profilePath, *duration, ui != nil, *httpBodies)
+	if code := runCaptureFn(ctx, captureArgs, stderr, inner); code != 0 {
 		return code
 	}
 	logger.Info("ingest: decoding capture", "capture", capturePath)
@@ -79,6 +78,21 @@ func runIngest(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "完了: 牌譜 %d 件を保存しました\n", ui.storedGames())
 	}
 	return code
+}
+
+// ingestCaptureArgs builds the capture invocation. --http-bodies is always
+// passed explicitly (never inherited from capture's own default, regardless
+// of --plain), and the friendly view adds --log-names so "received a
+// record/MAKA report" lines can be shown (message names only, no payloads).
+func ingestCaptureArgs(endpoint, capturePath, metaPath, profilePath string, duration time.Duration, friendly, httpBodies bool) []string {
+	args := []string{"--endpoint", endpoint, "--out", capturePath, "--liqi-meta", metaPath, "--protocol", profilePath, fmt.Sprintf("--http-bodies=%t", httpBodies)}
+	if duration > 0 {
+		args = append(args, "--duration", duration.String())
+	}
+	if friendly {
+		args = append(args, "--log-names")
+	}
+	return args
 }
 
 // resolveEvidencePath returns the explicit path, or the unique glob match.

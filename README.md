@@ -81,6 +81,8 @@ capture → decode → 保存を 1 コマンドにしたものです（上のク
 
 既定では工程が分かる進行表示（`[ok] 接続` → `[..] スキャン中` → `[rx] 牌譜/MAKA 受信` → `[ok] 復元/保存`）を出します。表示するのは既存ログと同じ message 名・件数・保存パスのみで、payload や個人情報は含みません。従来の構造化ログが必要なら `--plain` を付けてください。
 
+ingest は既定で HTTP レスポンス body の追加取得をしません（`--http-bodies` で capture と同じ従来動作に戻せます）。牌譜と MAKA は WebSocket 経由で、decode は HTTP body を読まないためです。WebSocket・HTTP メタデータ・受信済みイベントは従来どおりすべて記録され、影響は今後の capture のみです（既存 capture は変更しません）。
+
 自席（self_seat）はスキャン中のログイン応答から判定しますが、無い場合は同じ `data/captures/` 内の過去 capture のログイン応答を自動で再利用します（`--reuse-login=false` で無効化、decode 単体では `--login-from-captures DIR` で明示）。account_id はどの経路でもメモリ上でしか扱わず、保存もログ出力もしません。参照先は各クローンの private な captures ディレクトリだけなので、リポジトリを共有しても他人の環境から自分の ID が参照されることはありません。複数人のログインが混ざった環境では、席テーブルにちょうど 1 人一致したときだけ採用します。
 
 ### capture / inspect — 観測と offline 解析
@@ -94,7 +96,7 @@ capture → decode → 保存を 1 コマンドにしたものです（上のク
 
 - CDP への送信は `Network.enable` / `Network.getResponseBody` に限定。Navigate / Click / Evaluate 等の自動操作は実装していません
 - capture は private JSONL（schema_version=1、seq 単調増加、各行 fsync、既存ファイル上書きなし）へ raw を保存します
-- HTTP body 予算は単体 32 MiB / 全体 128 MiB。`--body-url-regexp` で対象 URL を追加できます（独自 GET はしません）
+- HTTP body 予算は単体 32 MiB / 全体 128 MiB。`--body-url-regexp` で対象 URL を追加できます（独自 GET はしません）。`--http-bodies=false` で body の追加取得自体を止められます（capture の既定は true、ingest の既定は false。設定は capture_context に記録）。data_url 経由の牌譜配信は未実測・未対応のままで、この設定で decode の対応範囲は変わりません
 - name ログには実測済み envelope profile が必須です。profile が無い間は `protocol_unverified` として raw のみ保存します（[Phase 1 実測手順](docs/phase1-capture.md)）
 - 接続確立を capture に含めたい場合は、capture 起動後にゲームページを再読み込みしてください
 
