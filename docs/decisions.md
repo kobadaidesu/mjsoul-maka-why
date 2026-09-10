@@ -165,3 +165,11 @@ web 版 LLM クライアントは stdio に接続できないため、`--listen`
 - self_seat: capture 内の `.lq.Lobby.oauth2Login` 応答（`ResLogin.account_id`、実測）と `RecordGame.accounts[].{account_id, seat}` をメモリ上で照合し、**seat 番号だけ**を `Game.SelfSeat` に保存する。account_id・nickname は保存もログもしない。照合できない capture では従来どおり省略。
 - `find_mistakes` は seat 省略時に stored self_seat を使い（憲法 §29 の仕様どおり）、無ければ従来の明示エラーを維持。明示 seat は常に優先。
 - 検証: 合成テスト（照合ヒット/ミス/ゼロ ID 拒否、MCP の default/override/エラー維持）に加え、リロード capture の再 decode で self_seat=2 を検出し、UI で確認済みの席と一致した。
+
+## 2026-09-10: 改善キューの取り込み状況と検収状況の分離
+
+採用: roadmap に main への取り込み根拠（コミットが main の祖先であることの git 確認）と検証状況を分けて記録する。理由: 改善①〜⑤の実装は main に含まれているが「PR待ち」の記載が残っていたため。
+
+却下: main への取り込みをもって全受け入れ基準の達成とする案。理由: ingest の実牌譜保存と進行表示の実機受信行に未確認事項が残る。過去のテスト成功を現在 HEAD の検証結果として扱わない。
+
+プロトコル確認状態は変更しない。self_seat の照合実測（`ResLogin.account_id`）は decisions.md 2026-09-06 に記載があるが protocol-findings.md に日時・方法つきの記録が無いため、根拠補完を別途行う（roadmap ②の TODO(verify)）。
