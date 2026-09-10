@@ -109,7 +109,7 @@ capture (CDP観測, internal/capture)
 
 ### ⑨ CLI 内部整理 — branch `feature/cli-refactor`
 
-状態: **コード・自動検証の検収完了**（2026-09-10 設計担当が `dcab2e8` の差分・テスト生出力を検収。外部挙動・保存 JSON・終了コード・既存ログ文言は不変。例外: plain ログの対応行に `cli_event` 属性が追加される）
+状態: **コード・自動検証の検収完了**（2026-09-10 設計担当が `dcab2e8` の差分・テスト生出力を検収。外部挙動・保存 JSON・終了コード・既存ログ文言は不変。例外: plain ログの対応行に `cli_event` 属性が追加される）。取り込み先: [PR #16](https://github.com/kobadaidesu/mjsoul-maka-why/pull/16)
 
 - 検収済みの自動検証: 合成 capture の到着順（report→game→login でも正規化 JSON が完全一致）、保存 JSON と `--out` の内容一致、保存時刻が当該 game response イベントと完全一致、store/`--out` の 0600、通常ログ・正規化 JSON への識別子非露出、`--out` 拒否時の既存 bytes 保持、後続 game 失敗時の先行保存維持、並列 runner の独立、固定 `cli_event` による表示分類（文言変更耐性・旧文言非分類・実経路）。
 
