@@ -163,6 +163,15 @@ type wsFrame struct {
 	payload   []byte
 }
 
+// captureBase is the fixed reference clock for synthetic captures: the
+// event with seq N is stamped captureBase + N seconds, so tests can assert
+// exactly which event's timestamp was preserved.
+var captureBase = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+func captureEventTime(seq uint64) time.Time {
+	return captureBase.Add(time.Duration(seq) * time.Second)
+}
+
 func writeWSCapture(t *testing.T, path string, frames []wsFrame) {
 	t.Helper()
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -171,7 +180,8 @@ func writeWSCapture(t *testing.T, path string, frames []wsFrame) {
 	}
 	enc := json.NewEncoder(f)
 	for i, fr := range frames {
-		e := capture.Event{SchemaVersion: 1, Seq: uint64(i + 1), CapturedAt: time.Now().UTC(), Kind: "websocket",
+		seq := uint64(i + 1)
+		e := capture.Event{SchemaVersion: 1, Seq: seq, CapturedAt: captureEventTime(seq), Kind: "websocket",
 			ConnectionID: "c", Direction: fr.direction, Opcode: 2, PayloadHex: hex.EncodeToString(fr.payload)}
 		if err := enc.Encode(e); err != nil {
 			t.Fatal(err)
@@ -271,12 +281,7 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 	const uuid = "synthetic-uuid"
 	dir := t.TempDir()
 	capturePath := filepath.Join(dir, "capture.jsonl")
-	writeStart := time.Now()
 	writeWSCapture(t, capturePath, offlineCaptureFrames(t, r, uuid))
-	writeEnd := time.Now()
-	// Separate the capture window from the decode run so a captured_at taken
-	// from the decode clock would land outside [writeStart, writeEnd].
-	time.Sleep(20 * time.Millisecond)
 	gamesDir := filepath.Join(dir, "games")
 	outPath := filepath.Join(dir, "out.json")
 
@@ -323,13 +328,14 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(stored, &doc); err != nil {
 		t.Fatalf("stored game unreadable: %v\n%s", err, stored)
 	}
-	// The store keeps its schema version and the capture event's timestamp,
-	// not the decode run's clock (the decode started after writeEnd).
+	// The store keeps its schema version and exactly the game record
+	// response event's timestamp (seq 4 in offlineCaptureFrames) — not the
+	// decode clock and not another event's stamp.
 	if doc.SchemaVersion != 1 {
 		t.Fatalf("schema_version = %d, want 1", doc.SchemaVersion)
 	}
-	if doc.CapturedAt.IsZero() || doc.CapturedAt.Before(writeStart) || doc.CapturedAt.After(writeEnd) {
-		t.Fatalf("captured_at %v not preserved from the capture window [%v, %v]", doc.CapturedAt, writeStart, writeEnd)
+	if want := captureEventTime(4); !doc.CapturedAt.Equal(want) {
+		t.Fatalf("captured_at %v, want the game response event time %v", doc.CapturedAt, want)
 	}
 	g := doc.Game
 	if g.UUID != uuid || g.StartTime != 111 || g.EndTime != 222 || g.MakaUUID != uuid || g.Version != 210715 || len(g.Issues) != 0 {
@@ -361,6 +367,9 @@ func TestOfflineDecodeCLIEndToEnd(t *testing.T) {
 		t.Fatalf("maka joined decisions = %d, want 4", joined)
 	}
 
+	if info, err := os.Stat(outPath); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("--out not private: %v %v", info, err)
+	}
 	outData, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatalf("--out missing: %v", err)
