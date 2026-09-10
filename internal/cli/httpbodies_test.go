@@ -3,14 +3,19 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"mjcap/internal/capture"
+	"mjcap/internal/decode"
 )
 
 func TestCaptureBodyPolicyFlagMapping(t *testing.T) {
@@ -146,6 +151,100 @@ func TestIngestHandsHTTPBodiesToCapture(t *testing.T) {
 		if opts.policy.DisableHTTPBodies != tc.disable {
 			t.Fatalf("%v: DisableHTTPBodies=%v want %v (argv %v)", tc.args, opts.policy.DisableHTTPBodies, tc.disable, captured)
 		}
+	}
+}
+
+// TestOfflineDecodeUnaffectedByHTTPBodySetting builds two synthetic captures
+// with identical WebSocket frames but different http_bodies settings — one
+// context true with a stored HTTP metadata/body pair, one context false with
+// a disabled metadata event — and runs both through the real offline decoder.
+// The resolved protobuf response must be identical and non-empty.
+func TestOfflineDecodeUnaffectedByHTTPBodySetting(t *testing.T) {
+	n, meta, r := loginFixture(t)
+	req, res := loginFrames(t, r, 222222)
+	dir := t.TempDir()
+	build := func(name string, httpBodies bool) string {
+		path := filepath.Join(dir, name)
+		details, err := json.Marshal(struct {
+			Liqi       any  `json:"liqi"`
+			HTTPBodies bool `json:"http_bodies"`
+		}{meta, httpBodies})
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := []capture.Event{
+			{Kind: "capture_context", Details: details},
+			{Kind: "websocket", ConnectionID: "c", Direction: "sent", Opcode: 2, PayloadHex: hex.EncodeToString(req)},
+			{Kind: "http_metadata", RequestID: "h1", Status: 200, MIMEType: "application/octet-stream", BodyStatus: "disabled"},
+			{Kind: "websocket", ConnectionID: "c", Direction: "received", Opcode: 2, PayloadHex: hex.EncodeToString(res)},
+		}
+		if httpBodies {
+			body := base64.StdEncoding.EncodeToString([]byte("synthetic asset"))
+			events[2].BodyStatus = "awaiting_loading_finished"
+			events = append(events, capture.Event{Kind: "http_response", RequestID: "h1", BodyStatus: "stored", BodyBase64: &body, CDPResult: json.RawMessage(`{"body":"c3ludGhldGljIGFzc2V0","base64Encoded":true}`)})
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		enc := json.NewEncoder(f)
+		for i, e := range events {
+			e.SchemaVersion = 1
+			e.Seq = uint64(i + 1)
+			e.CapturedAt = time.Now()
+			if err := enc.Encode(e); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	type resolved struct {
+		name    string
+		account uint64
+		count   int
+	}
+	decodeFile := func(path string) resolved {
+		d, err := decode.NewDecoder(n.Evidence(), r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		var out resolved
+		if err := capture.Replay(f, func(e capture.Event) error {
+			if err := checkCaptureBinding(e, n, meta); err != nil {
+				return err
+			}
+			frame := d.Observe(e)
+			if frame.Kind != "response" || frame.Message == nil {
+				return nil
+			}
+			out.count++
+			out.name = frame.Name
+			id, err := decode.UintField(frame.Message, "account_id")
+			if err != nil {
+				t.Fatal(err)
+			}
+			out.account = id
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	withBodies := decodeFile(build("with-bodies.jsonl", true))
+	withoutBodies := decodeFile(build("without-bodies.jsonl", false))
+	if withBodies.count != 1 || withBodies.name != oauth2LoginMethod || withBodies.account != 222222 {
+		t.Fatalf("enabled capture decoded to %+v", withBodies)
+	}
+	if withoutBodies != withBodies {
+		t.Fatalf("offline decode differs: %+v vs %+v", withoutBodies, withBodies)
 	}
 }
 

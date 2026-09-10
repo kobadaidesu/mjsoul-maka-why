@@ -104,6 +104,14 @@ func TestObserverFixture(t *testing.T) {
 	if err != nil || string(raw) != `{"synthetic":true}` {
 		t.Fatalf("body changed: %s %v", raw, err)
 	}
+	// Double retention on the stored path: the extracted body_base64 and the
+	// verbatim CDP reply result are both kept.
+	packets := fixturePackets(t)
+	for _, e := range sink.events {
+		if e.Kind == "http_response" && e.BodyStatus == "stored" && !bytes.Equal(e.CDPResult, []byte(packets[7].Result)) {
+			t.Fatalf("stored CDP result not identical: %s vs %s", e.CDPResult, packets[7].Result)
+		}
+	}
 	if sink.events[len(sink.events)-1].CDPMethod != "Network.futureEvent" {
 		t.Fatal("unknown CDP event lost")
 	}
@@ -363,6 +371,66 @@ func TestDisabledHTTPBodiesNeverRequests(t *testing.T) {
 	}
 }
 
+// TestDisabledHTTPBodiesSyntheticCandidates covers candidates the fixture
+// lacks: an XHR with an empty body, a Fetch over MaxBodyBytes, and a
+// URLPattern match. Disabled must issue no request and track nothing for
+// any of them while keeping the original params byte-for-byte.
+func TestDisabledHTTPBodiesSyntheticCandidates(t *testing.T) {
+	policy := BodyPolicy{MaxBodyBytes: 1024, MaxTotalBytes: 4096, URLPattern: regexp.MustCompile("selected-url"), DisableHTTPBodies: true}
+	sink := &memorySink{}
+	o := newObserver(sink, policy, nil, func(string, any) (int64, error) {
+		t.Fatal("body requested under disabled policy")
+		return 0, nil
+	})
+	cases := []struct{ metadata, finished string }{
+		// XHR whose body would be empty (encodedDataLength=0).
+		{`{"requestId":"xhr-1","type":"XHR","response":{"url":"https://example.invalid/x","status":200,"mimeType":"text/plain"}}`,
+			`{"requestId":"xhr-1","timestamp":1,"encodedDataLength":0}`},
+		// Fetch over MaxBodyBytes (1025 > 1024).
+		{`{"requestId":"fetch-1","type":"Fetch","response":{"url":"https://example.invalid/f","status":200,"mimeType":"application/json"}}`,
+			`{"requestId":"fetch-1","timestamp":2,"encodedDataLength":1025}`},
+		// URLPattern match on an otherwise unselected response.
+		{`{"requestId":"pat-1","type":"Other","response":{"url":"https://example.invalid/selected-url","status":200,"mimeType":"text/html"}}`,
+			`{"requestId":"pat-1","timestamp":3,"encodedDataLength":512}`},
+	}
+	for _, tc := range cases {
+		metadata := cdproto.Message{Method: "Network.responseReceived", Params: []byte(tc.metadata)}
+		finished := cdproto.Message{Method: "Network.loadingFinished", Params: []byte(tc.finished)}
+		if err := o.handle(&metadata, true); err != nil {
+			t.Fatal(err)
+		}
+		if len(o.responses) != 0 || len(o.pending) != 0 {
+			t.Fatalf("disabled policy tracked %s", tc.metadata)
+		}
+		if err := o.handle(&finished, true); err != nil {
+			t.Fatal(err)
+		}
+		if len(o.pending) != 0 {
+			t.Fatalf("disabled policy requested a body for %s", tc.finished)
+		}
+	}
+	metadataIndex, finishedIndex := 0, 0
+	for _, e := range sink.events {
+		switch e.Kind {
+		case "http_metadata":
+			if e.BodyStatus != "disabled" || !bytes.Equal(e.CDPParams, []byte(cases[metadataIndex].metadata)) {
+				t.Fatalf("metadata %d altered: %s %s", metadataIndex, e.BodyStatus, e.CDPParams)
+			}
+			metadataIndex++
+		case "http_finished":
+			if !bytes.Equal(e.CDPParams, []byte(cases[finishedIndex].finished)) {
+				t.Fatalf("finished %d altered: %s", finishedIndex, e.CDPParams)
+			}
+			finishedIndex++
+		default:
+			t.Fatalf("unexpected event kind %s", e.Kind)
+		}
+	}
+	if metadataIndex != len(cases) || finishedIndex != len(cases) {
+		t.Fatalf("events lost: metadata=%d finished=%d", metadataIndex, finishedIndex)
+	}
+}
+
 func TestDisabledHTTPBodiesKeepsLateRepliesAndFailures(t *testing.T) {
 	sink := &memorySink{}
 	o := newObserver(sink, BodyPolicy{MaxBodyBytes: 1024, MaxTotalBytes: 4096, DisableHTTPBodies: true}, nil,
@@ -409,6 +477,7 @@ func TestDisabledCaptureIsSmallerWithIdenticalWebsocketRaw(t *testing.T) {
 	if enabledCalls != 1 || disabledCalls != 0 {
 		t.Fatalf("calls enabled=%d disabled=%d", enabledCalls, disabledCalls)
 	}
+	// JSONL size: one marshaled line per event plus the trailing newline.
 	size := func(events []Event) int {
 		total := 0
 		for _, e := range events {
@@ -416,12 +485,24 @@ func TestDisabledCaptureIsSmallerWithIdenticalWebsocketRaw(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			total += len(raw)
+			total += len(raw) + 1
 		}
 		return total
 	}
-	if size(disabledSink.events) >= size(enabledSink.events) {
-		t.Fatalf("disabled capture not smaller: %d vs %d", size(disabledSink.events), size(enabledSink.events))
+	stored := func(events []Event) int {
+		n := 0
+		for _, e := range events {
+			if e.BodyBase64 != nil {
+				n++
+			}
+		}
+		return n
+	}
+	enabledBytes, disabledBytes := size(enabledSink.events), size(disabledSink.events)
+	t.Logf("enabled:  jsonl_bytes=%d body_requests=%d bodies_stored=%d events=%d", enabledBytes, enabledCalls, stored(enabledSink.events), len(enabledSink.events))
+	t.Logf("disabled: jsonl_bytes=%d body_requests=%d bodies_stored=%d events=%d", disabledBytes, disabledCalls, stored(disabledSink.events), len(disabledSink.events))
+	if disabledBytes >= enabledBytes {
+		t.Fatalf("disabled capture not smaller: %d vs %d", disabledBytes, enabledBytes)
 	}
 	ws := func(events []Event) []Event {
 		var out []Event
@@ -444,15 +525,6 @@ func TestDisabledCaptureIsSmallerWithIdenticalWebsocketRaw(t *testing.T) {
 			t.Fatalf("websocket raw differs at %d: %s vs %s", i, ra, rb)
 		}
 	}
-	stored := func(events []Event) int {
-		n := 0
-		for _, e := range events {
-			if e.BodyBase64 != nil {
-				n++
-			}
-		}
-		return n
-	}
 	if stored(enabledSink.events) != 1 || stored(disabledSink.events) != 0 {
 		t.Fatalf("stored bodies enabled=%d disabled=%d", stored(enabledSink.events), stored(disabledSink.events))
 	}
@@ -468,5 +540,10 @@ func TestBinaryBodyOvershootPreservesAllBytes(t *testing.T) {
 	last := sink.events[0]
 	if last.BodyStatus != "stored_over_limit" || last.BodyBase64 == nil || *last.BodyBase64 != "AAEC/w==" {
 		t.Fatal("overshoot bytes discarded")
+	}
+	// Double retention holds on the overshoot path too: the verbatim CDP
+	// reply result is kept alongside the extracted body.
+	if !bytes.Equal(last.CDPResult, []byte(msg.Result)) {
+		t.Fatalf("overshoot CDP result not identical: %s", last.CDPResult)
 	}
 }

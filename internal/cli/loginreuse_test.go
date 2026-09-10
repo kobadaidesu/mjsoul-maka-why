@@ -99,22 +99,28 @@ func wrapLogin(t *testing.T, r *liqi.Resource, name string, payload []byte) []by
 	return out
 }
 
-func writeLoginCapture(t *testing.T, path string, r *liqi.Resource, accountID uint64) {
+// loginFrames builds a request/response pair for the synthetic envelope:
+// type byte, 2-byte little-endian request number, then the Wrapper bytes.
+func loginFrames(t *testing.T, r *liqi.Resource, accountID uint64) (req, res []byte) {
 	t.Helper()
 	md, err := r.Registry.Message(".lq.ResLogin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := dynamicpb.NewMessage(md)
-	res.Set(md.Fields().ByName("account_id"), protoreflect.ValueOfUint32(uint32(accountID)))
-	resData, err := proto.Marshal(res)
+	login := dynamicpb.NewMessage(md)
+	login.Set(md.Fields().ByName("account_id"), protoreflect.ValueOfUint32(uint32(accountID)))
+	resData, err := proto.Marshal(login)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Envelope per the synthetic profile: type byte, 2-byte little-endian
-	// request number, then the Wrapper bytes.
-	req := append([]byte{2, 1, 0}, wrapLogin(t, r, oauth2LoginMethod, nil)...)
-	resFrame := append([]byte{3, 1, 0}, wrapLogin(t, r, "", resData)...)
+	req = append([]byte{2, 1, 0}, wrapLogin(t, r, oauth2LoginMethod, nil)...)
+	res = append([]byte{3, 1, 0}, wrapLogin(t, r, "", resData)...)
+	return req, res
+}
+
+func writeLoginCapture(t *testing.T, path string, r *liqi.Resource, accountID uint64) {
+	t.Helper()
+	req, resFrame := loginFrames(t, r, accountID)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
